@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/crucible_ensemble.svg" alt="Ensemble" width="150"/>
+</p>
+
 # CrucibleEnsemble
 
 **Multi-model ensemble prediction with configurable voting strategies for AI reliability research.**
