@@ -478,7 +478,7 @@ This is a research library. Contributions welcome:
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT License - see [LICENSE](https://github.com/North-Shore-AI/crucible_ensemble/blob/main/LICENSE) file for details
 
 ## Citation
 

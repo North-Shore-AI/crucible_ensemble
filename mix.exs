@@ -48,11 +48,11 @@ defmodule CrucibleEnsemble.MixProject do
     [
       name: "crucible_ensemble",
       description: description(),
-      files: ~w(lib mix.exs README.md LICENSE),
+      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,
-        "Online documentation" => "https://hexdocs.pm/ensemble"
+        "Online documentation" => "https://hexdocs.pm/crucible_ensemble"
       },
       maintainers: ["nshkrdotcom"]
     ]
