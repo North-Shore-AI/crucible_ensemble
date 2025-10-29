@@ -1,25 +1,21 @@
 #!/usr/bin/env elixir
 
-# Basic Usage Example for Ensemble Library
+# Basic Usage Example for CrucibleEnsemble Library
 #
-# This example demonstrates the simplest way to use Ensemble for
+# This example demonstrates the simplest way to use CrucibleEnsemble for
 # multi-model predictions with voting.
 #
-# Setup:
+# Note: This uses mock responses since it doesn't require actual API keys.
+# For real usage with API keys, set:
 #   export GEMINI_API_KEY="your-key"
 #   export OPENAI_API_KEY="your-key"
 #   export ANTHROPIC_API_KEY="your-key"
 #
 # Run:
-#   elixir examples/basic_usage.exs
+#   mix run examples/basic_usage.exs
 
-# Start the application
-Mix.install([
-  {:crucible_ensemble, path: "."}
-])
-
-# Make sure the application is started
-{:ok, _} = Application.ensure_all_started(:crucible_ensemble)
+# Ensure the application is started
+Application.ensure_all_started(:crucible_ensemble)
 
 IO.puts("\n=== Ensemble Basic Usage Example ===\n")
 

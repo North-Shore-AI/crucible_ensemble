@@ -8,14 +8,12 @@
 # - Hedged: Primary model with backup hedges
 # - Cascade: Priority order with early stopping
 #
+# Note: This uses mock responses since it doesn't require actual API keys.
+#
 # Run:
-#   elixir examples/execution_strategies.exs
+#   mix run examples/execution_strategies.exs
 
-Mix.install([
-  {:crucible_ensemble, path: "."}
-])
-
-{:ok, _} = Application.ensure_all_started(:crucible_ensemble)
+Application.ensure_all_started(:crucible_ensemble)
 
 IO.puts("\n=== Execution Strategies Comparison ===\n")
 

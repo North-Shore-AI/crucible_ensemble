@@ -5,14 +5,12 @@
 # This example demonstrates how to conduct a research experiment
 # comparing ensemble reliability vs single model performance.
 #
+# Note: This uses mock responses since it doesn't require actual API keys.
+#
 # Run:
-#   elixir examples/research_experiment.exs
+#   mix run examples/research_experiment.exs
 
-Mix.install([
-  {:crucible_ensemble, path: "."}
-])
-
-{:ok, _} = Application.ensure_all_started(:crucible_ensemble)
+Application.ensure_all_started(:crucible_ensemble)
 
 IO.puts("\n=== Ensemble Reliability Research Experiment ===\n")
 

@@ -5,14 +5,12 @@
 # This example demonstrates different voting strategies and shows
 # how they produce different results for the same query.
 #
+# Note: This uses mock responses since it doesn't require actual API keys.
+#
 # Run:
-#   elixir examples/voting_strategies.exs
+#   mix run examples/voting_strategies.exs
 
-Mix.install([
-  {:crucible_ensemble, path: "."}
-])
-
-{:ok, _} = Application.ensure_all_started(:crucible_ensemble)
+Application.ensure_all_started(:crucible_ensemble)
 
 IO.puts("\n=== Voting Strategies Comparison ===\n")
 
