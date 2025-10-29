@@ -4,6 +4,12 @@
 
 # CrucibleEnsemble
 
+[![CI](https://github.com/North-Shore-AI/crucible_ensemble/actions/workflows/elixir.yaml/badge.svg)](https://github.com/North-Shore-AI/crucible_ensemble/actions/workflows/elixir.yaml)
+[![Elixir](https://img.shields.io/badge/elixir-1.14+-purple.svg)](https://elixir-lang.org)
+[![Hex.pm](https://img.shields.io/hexpm/v/crucible_ensemble.svg)](https://hex.pm/packages/crucible_ensemble)
+[![Documentation](https://img.shields.io/badge/docs-hexdocs-purple.svg)](https://hexdocs.pm/crucible_ensemble)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/North-Shore-AI/crucible_ensemble/blob/main/LICENSE)
+
 **Multi-model ensemble prediction with configurable voting strategies for AI reliability research.**
 
 Ensemble is an Elixir library that enables reliable AI predictions by querying multiple language models concurrently and aggregating their responses using sophisticated voting strategies. Built on the BEAM VM, it leverages Elixir's lightweight processes to achieve massive parallelism with minimal overhead.
