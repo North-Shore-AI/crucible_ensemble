@@ -286,7 +286,8 @@ defmodule CrucibleEnsemble.Strategy do
       normalization = Keyword.get(opts, :normalization, :lowercase_trim)
 
       voting_opts = [
-        normalization: normalization
+        normalization: normalization,
+        return_original_answer: Keyword.get(opts, :return_original_answer, false)
       ]
 
       case Vote.apply_strategy(responses, voting_strategy, voting_opts) do

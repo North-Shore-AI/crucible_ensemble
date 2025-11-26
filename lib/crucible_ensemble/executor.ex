@@ -329,31 +329,25 @@ defmodule CrucibleEnsemble.Executor do
   end
 
   defp extract_text(response) do
-    cond do
-      Map.has_key?(response, :text) -> response.text
-      Map.has_key?(response, :response) -> response.response
-      Map.has_key?(response, :content) -> response.content
-      Map.has_key?(response, "text") -> response["text"]
-      Map.has_key?(response, "response") -> response["response"]
-      Map.has_key?(response, "content") -> response["content"]
-      true -> ""
-    end
+    Map.get(response, :text) ||
+      Map.get(response, :response) ||
+      Map.get(response, :content) ||
+      Map.get(response, "text") ||
+      Map.get(response, "response") ||
+      Map.get(response, "content") ||
+      ""
   end
 
   defp extract_usage(response) do
-    cond do
-      Map.has_key?(response, :usage) -> response.usage
-      Map.has_key?(response, "usage") -> response["usage"]
-      true -> %{input_tokens: 0, output_tokens: 0}
-    end
+    Map.get(response, :usage) ||
+      Map.get(response, "usage") ||
+      %{input_tokens: 0, output_tokens: 0}
   end
 
   defp extract_finish_reason(response) do
-    cond do
-      Map.has_key?(response, :finish_reason) -> response.finish_reason
-      Map.has_key?(response, "finish_reason") -> response["finish_reason"]
-      true -> "unknown"
-    end
+    Map.get(response, :finish_reason) ||
+      Map.get(response, "finish_reason") ||
+      "unknown"
   end
 
   defp count_successes(results) do

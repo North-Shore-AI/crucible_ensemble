@@ -26,7 +26,7 @@ Current AI systems exhibit unacceptably high failure rates in production:
 ## Features
 
 - **High Reliability**: Ensemble voting reduces error rates exponentially
-- **Multiple Voting Strategies**: Majority, weighted, best confidence, unanimous
+- **Multiple Voting Strategies**: Majority, weighted, best confidence, unanimous, semantic similarity, ranked choice
 - **Flexible Execution**: Parallel, sequential, hedged, cascade strategies
 - **Cost Tracking**: Automatic per-model and ensemble cost calculation
 - **Telemetry Integration**: Comprehensive instrumentation for research analysis
@@ -40,7 +40,7 @@ Add `ensemble` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:crucible_ensemble, "~> 0.1.0"}
+    {:crucible_ensemble, "~> 0.2.0"}
   ]
 end
 ```
@@ -204,6 +204,59 @@ All models must agree. Highest confidence, may fail.
 ```
 
 **Best for**: High-stakes decisions requiring absolute consensus
+
+### Semantic Similarity (`:semantic_similarity`) ✨ NEW in v0.2.0
+
+Groups responses by textual similarity for better consensus detection.
+
+```elixir
+{:ok, result} = CrucibleEnsemble.predict(
+  "What is 2+2?",
+  strategy: :semantic_similarity,
+  similarity_threshold: 0.85,
+  similarity_metric: :levenshtein
+)
+# Models respond: "The answer is 4", "4", "Four"
+# All recognized as equivalent => 100% consensus
+```
+
+**Best for**: Mathematical answers with varied phrasing, code with formatting differences, equivalent classifications
+
+**Metrics**: `:levenshtein` (edit distance), `:jaccard` (word overlap), `:cosine` (term frequency)
+
+### Ranked Choice (`:ranked_choice`) ✨ NEW in v0.2.0
+
+Aggregate preferences using instant-runoff or Borda count methods.
+
+```elixir
+{:ok, result} = CrucibleEnsemble.predict(
+  "Best sorting algorithm?",
+  strategy: :ranked_choice,
+  ranking_method: :instant_runoff
+)
+# Models provide ranked preferences:
+# Model 1: ["quicksort", "mergesort", "heapsort"]
+# Model 2: ["mergesort", "quicksort", "heapsort"]
+# Winner determined through runoff voting
+```
+
+**Best for**: Multiple valid approaches, design decisions with tradeoffs, prioritization tasks
+
+**Methods**: `:instant_runoff` (eliminate weakest), `:borda_count` (point-based)
+
+### Return Original Answers (optional)
+
+By default, `result.answer` is normalized for reliable voting. To display the representative original text instead, set `return_original_answer: true`:
+
+```elixir
+{:ok, result} = CrucibleEnsemble.predict(
+  "Is the sky blue?",
+  strategy: :semantic_similarity,
+  return_original_answer: true
+)
+
+IO.puts(result.answer) # prints the chosen original response text
+```
 
 ## Execution Strategies
 
@@ -1459,7 +1512,15 @@ MIT License - see [LICENSE](https://github.com/North-Shore-AI/crucible_ensemble/
 
 ## Changelog
 
-### v0.1.0 (Current)
+### v0.2.0 (Current) - 2025-11-25
+- **NEW**: Semantic similarity voting strategy with Levenshtein, Jaccard, and cosine similarity
+- **NEW**: Ranked choice voting with instant-runoff and Borda count methods
+- **NEW**: Similarity module for text comparison and clustering
+- Enhanced vote module with extended strategy support
+- Comprehensive design documentation
+- Zero breaking changes from v0.1.0
+
+### v0.1.0 - 2025-10-07
 - Initial release with multi-model ensemble support
 - Four voting strategies: majority, weighted, best_confidence, unanimous
 - Four execution strategies: parallel, sequential, hedged, cascade

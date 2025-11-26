@@ -1,7 +1,7 @@
 defmodule CrucibleEnsemble.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0"
   @source_url "https://github.com/North-Shore-AI/crucible_ensemble"
 
   def project do
@@ -36,6 +36,7 @@ defmodule CrucibleEnsemble.MixProject do
 
       # Development and testing
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.4", only: :dev, runtime: false},
       {:mox, "~> 1.1", only: :test}
     ]
   end

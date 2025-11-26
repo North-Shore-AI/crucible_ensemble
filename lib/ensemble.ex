@@ -34,6 +34,8 @@ defmodule CrucibleEnsemble do
   - `:weighted` - Responses weighted by confidence scores
   - `:best_confidence` - Highest confidence response
   - `:unanimous` - All models must agree
+  - `:semantic_similarity` - Groups responses by textual similarity (v0.2.0+)
+  - `:ranked_choice` - Instant-runoff or Borda count voting (v0.2.0+)
 
   ## Execution Strategies
 
@@ -56,7 +58,13 @@ defmodule CrucibleEnsemble do
   @type query :: String.t()
   @type model :: atom()
   @type voting_strategy ::
-          :majority | :weighted | :best_confidence | :unanimous | {module(), keyword()}
+          :majority
+          | :weighted
+          | :best_confidence
+          | :unanimous
+          | :semantic_similarity
+          | :ranked_choice
+          | {module(), keyword()}
   @type execution_strategy :: :parallel | :sequential | :hedged | :cascade
 
   @type options :: [
@@ -66,6 +74,7 @@ defmodule CrucibleEnsemble do
           timeout: pos_integer(),
           min_responses: pos_integer(),
           normalization: atom(),
+          return_original_answer: boolean(),
           api_keys: map(),
           telemetry_metadata: map()
         ]
@@ -102,6 +111,7 @@ defmodule CrucibleEnsemble do
     * `:timeout` - Per-model timeout in ms (default: #{@default_timeout})
     * `:min_responses` - Minimum successful responses required (default: ceil(length(models) / 2))
     * `:normalization` - Response normalization strategy (default: :lowercase_trim)
+    * `:return_original_answer` - If true, return the representative original response text instead of normalized value (default: false)
     * `:api_keys` - Map of model => API key (default: from environment)
     * `:telemetry_metadata` - Additional metadata for telemetry events
 
@@ -308,8 +318,14 @@ defmodule CrucibleEnsemble do
           # All tasks complete, emit final result
           voting_strategy = Keyword.get(opts, :strategy, @default_voting_strategy)
           normalization = Keyword.get(opts, :normalization, :lowercase_trim)
+          return_original_answer = Keyword.get(opts, :return_original_answer, false)
 
-          case aggregate_stream_results(results, voting_strategy, normalization) do
+          case aggregate_stream_results(
+                 results,
+                 voting_strategy,
+                 normalization,
+                 return_original_answer
+               ) do
             {:ok, final_result} ->
               {[{:complete, final_result}], :halt}
 
@@ -427,7 +443,7 @@ defmodule CrucibleEnsemble do
     end
   end
 
-  defp aggregate_stream_results(results, voting_strategy, normalization) do
+  defp aggregate_stream_results(results, voting_strategy, normalization, return_original_answer) do
     # Filter successes
     responses =
       results
@@ -441,7 +457,8 @@ defmodule CrucibleEnsemble do
       {:error, :no_successful_responses}
     else
       CrucibleEnsemble.Vote.apply_strategy(responses, voting_strategy,
-        normalization: normalization
+        normalization: normalization,
+        return_original_answer: return_original_answer
       )
     end
   end

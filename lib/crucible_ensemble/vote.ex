@@ -13,7 +13,13 @@ defmodule CrucibleEnsemble.Vote do
   alias CrucibleEnsemble.Normalize
 
   @type strategy ::
-          :majority | :weighted | :best_confidence | :unanimous | {module(), keyword()}
+          :majority
+          | :weighted
+          | :best_confidence
+          | :unanimous
+          | :semantic_similarity
+          | :ranked_choice
+          | {module(), keyword()}
   @type response :: map()
   @type vote_result :: %{
           answer: any(),
@@ -57,23 +63,39 @@ defmodule CrucibleEnsemble.Vote do
 
   def apply_strategy(responses, :majority, opts) do
     CrucibleEnsemble.Vote.Majority.aggregate(responses, opts)
+    |> maybe_use_original_answer(opts)
   end
 
   def apply_strategy(responses, :weighted, opts) do
     CrucibleEnsemble.Vote.Weighted.aggregate(responses, opts)
+    |> maybe_use_original_answer(opts)
   end
 
   def apply_strategy(responses, :best_confidence, opts) do
     CrucibleEnsemble.Vote.BestConfidence.aggregate(responses, opts)
+    |> maybe_use_original_answer(opts)
   end
 
   def apply_strategy(responses, :unanimous, opts) do
     CrucibleEnsemble.Vote.Unanimous.aggregate(responses, opts)
+    |> maybe_use_original_answer(opts)
+  end
+
+  def apply_strategy(responses, :semantic_similarity, opts) do
+    CrucibleEnsemble.Vote.SemanticSimilarity.aggregate(responses, opts)
+    |> maybe_use_original_answer(opts)
+  end
+
+  def apply_strategy(responses, :ranked_choice, opts) do
+    CrucibleEnsemble.Vote.RankedChoice.aggregate(responses, opts)
+    |> maybe_use_original_answer(opts)
   end
 
   def apply_strategy(responses, {module, custom_opts}, opts) do
     combined_opts = Keyword.merge(opts, custom_opts)
+
     module.aggregate(responses, combined_opts)
+    |> maybe_use_original_answer(opts)
   end
 
   @doc """
@@ -130,6 +152,30 @@ defmodule CrucibleEnsemble.Vote do
   @spec sufficient_consensus?(vote_result(), float()) :: boolean()
   def sufficient_consensus?(%{consensus: consensus}, threshold) do
     consensus >= threshold
+  end
+
+  @doc false
+  def maybe_use_original_answer({:ok, result}, opts) do
+    {:ok, maybe_use_original_answer(result, opts)}
+  end
+
+  def maybe_use_original_answer({:error, _} = error, _opts), do: error
+
+  def maybe_use_original_answer(result, opts) when is_map(result) do
+    if Keyword.get(opts, :return_original_answer, false) do
+      sample = Map.get(result, :sample_response)
+
+      original =
+        cond do
+          is_map(sample) -> Normalize.extract_response_text(sample)
+          not is_nil(sample) -> sample
+          true -> Map.get(result, :answer)
+        end
+
+      Map.put(result, :answer, original)
+    else
+      result
+    end
   end
 end
 
