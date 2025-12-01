@@ -40,7 +40,7 @@ Add `ensemble` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:crucible_ensemble, "~> 0.2.0"}
+    {:crucible_ensemble, "~> 0.3.0"}
   ]
 end
 ```
@@ -72,6 +72,73 @@ IO.inspect(result.metadata)
 #   models_used: [:gemini_flash, :openai_gpt4o_mini, :anthropic_haiku],
 #   successes: 3,
 #   failures: 0
+# }
+```
+
+## CrucibleIR Integration (v0.3.0+)
+
+CrucibleEnsemble now supports standardized configuration via `CrucibleIR.Reliability.Ensemble`:
+
+```elixir
+# Using CrucibleIR configuration
+config = %CrucibleIR.Reliability.Ensemble{
+  strategy: :majority,
+  execution_mode: :parallel,
+  models: [:gemini_flash, :openai_gpt4o_mini],
+  min_agreement: 0.7,
+  timeout_ms: 5000
+}
+
+{:ok, result} = CrucibleEnsemble.predict("What is 2+2?", config)
+```
+
+### Pipeline Stage Usage
+
+Use `CrucibleEnsemble.Stage` in crucible_framework pipelines:
+
+```elixir
+# In a pipeline with existing model outputs
+context = %{
+  experiment: %{
+    reliability: %{
+      ensemble: %CrucibleIR.Reliability.Ensemble{
+        strategy: :weighted,
+        execution_mode: :parallel
+      }
+    }
+  },
+  outputs: [
+    %{response: "4", model: :model1, confidence: 0.9},
+    %{response: "4", model: :model2, confidence: 0.8},
+    %{response: "5", model: :model3, confidence: 0.6}
+  ]
+}
+
+{:ok, updated_context} = CrucibleEnsemble.Stage.run(context)
+
+IO.puts(updated_context.answer)
+# => "4"
+IO.puts(updated_context.consensus)
+# => 0.85
+```
+
+### Stage Introspection
+
+```elixir
+# Get stage metadata
+description = CrucibleEnsemble.Stage.describe()
+
+IO.inspect(description)
+# => %{
+#   name: "ensemble_voting",
+#   description: "Multi-model ensemble voting stage",
+#   version: "0.3.0",
+#   inputs: [:outputs, :query, {:experiment, :reliability, :ensemble}],
+#   outputs: [:ensemble_result, :consensus, :answer, :ensemble_metadata],
+#   config_type: CrucibleIR.Reliability.Ensemble,
+#   strategies: [:majority, :weighted, :best_confidence, :unanimous,
+#                :semantic_similarity, :ranked_choice],
+#   execution_modes: [:parallel, :sequential, :hedged, :cascade]
 # }
 ```
 
@@ -1512,7 +1579,15 @@ MIT License - see [LICENSE](https://github.com/North-Shore-AI/crucible_ensemble/
 
 ## Changelog
 
-### v0.2.0 (Current) - 2025-11-25
+### v0.3.0 (Current) - 2025-11-26
+- **NEW**: CrucibleIR integration with `crucible_ir` dependency
+- **NEW**: `CrucibleEnsemble.Stage` module for pipeline integration
+- **NEW**: Support for `CrucibleIR.Reliability.Ensemble` configuration structs
+- Enhanced API with new `predict/3` and `predict_async/3` overloads
+- Comprehensive Stage implementation with 500+ lines of tests
+- Zero breaking changes from v0.2.0
+
+### v0.2.0 - 2025-11-25
 - **NEW**: Semantic similarity voting strategy with Levenshtein, Jaccard, and cosine similarity
 - **NEW**: Ranked choice voting with instant-runoff and Borda count methods
 - **NEW**: Similarity module for text comparison and clustering

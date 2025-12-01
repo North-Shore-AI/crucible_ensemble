@@ -1,7 +1,7 @@
 defmodule CrucibleEnsemble.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.0"
   @source_url "https://github.com/North-Shore-AI/crucible_ensemble"
 
   def project do
@@ -31,6 +31,7 @@ defmodule CrucibleEnsemble.MixProject do
       # Core dependencies
       # Note: req_llm is optional - the library provides a mock implementation for testing
       # {:req_llm, git: "https://github.com/calebjcourtney/req_llm.git", branch: "main"},
+      {:crucible_ir, "~> 0.1.1"},
       {:jason, "~> 1.4"},
       {:telemetry, "~> 1.2"},
 

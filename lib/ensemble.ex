@@ -54,6 +54,7 @@ defmodule CrucibleEnsemble do
   """
 
   alias CrucibleEnsemble.{Strategy, Pricing}
+  alias CrucibleIR.Reliability.Ensemble, as: EnsembleConfig
 
   @type query :: String.t()
   @type model :: atom()
@@ -141,9 +142,13 @@ defmodule CrucibleEnsemble do
   - Insufficient responses for voting
   - Invalid configuration
 
+  Also accepts a `CrucibleIR.Reliability.Ensemble` configuration struct.
+
   """
-  @spec predict(query(), options()) :: {:ok, result()} | {:error, term()}
-  def predict(query, opts \\ []) do
+  @spec predict(query(), options() | EnsembleConfig.t()) :: {:ok, result()} | {:error, term()}
+  def predict(query, opts \\ [])
+
+  def predict(query, opts) when is_list(opts) do
     start_time = System.monotonic_time(:microsecond)
     telemetry_meta = prepare_telemetry_metadata(query, opts)
 
@@ -236,11 +241,29 @@ defmodule CrucibleEnsemble do
     end
   end
 
+  def predict(query, %EnsembleConfig{} = config) do
+    predict(query, config, [])
+  end
+
+  @spec predict(query(), EnsembleConfig.t(), keyword()) :: {:ok, result()} | {:error, term()}
+  def predict(query, %EnsembleConfig{} = config, opts) when is_list(opts) do
+    # Convert EnsembleConfig to options
+    ensemble_opts = config_to_opts(config)
+
+    # Merge with provided opts (opts take precedence)
+    merged_opts = Keyword.merge(ensemble_opts, opts)
+
+    # Call the standard predict function
+    predict(query, merged_opts)
+  end
+
   @doc """
   Execute ensemble prediction asynchronously.
 
   Returns a Task that can be awaited later. Useful for concurrent
   operations or when you need to do other work while waiting.
+
+  Also accepts a `CrucibleIR.Reliability.Ensemble` configuration struct.
 
   ## Examples
 
@@ -258,10 +281,23 @@ defmodule CrucibleEnsemble do
       results = Task.await_many(tasks, 10_000)
 
   """
-  @spec predict_async(query(), options()) :: Task.t()
-  def predict_async(query, opts \\ []) do
+  @spec predict_async(query(), options() | EnsembleConfig.t()) :: Task.t()
+  def predict_async(query, opts \\ [])
+
+  def predict_async(query, opts) when is_list(opts) do
     Task.async(fn ->
       predict(query, opts)
+    end)
+  end
+
+  def predict_async(query, %EnsembleConfig{} = config) do
+    predict_async(query, config, [])
+  end
+
+  @spec predict_async(query(), EnsembleConfig.t(), keyword()) :: Task.t()
+  def predict_async(query, %EnsembleConfig{} = config, opts) when is_list(opts) do
+    Task.async(fn ->
+      predict(query, config, opts)
     end)
   end
 
@@ -375,6 +411,34 @@ defmodule CrucibleEnsemble do
   end
 
   # Private helper functions
+
+  defp config_to_opts(%EnsembleConfig{} = config) do
+    []
+    |> maybe_put_opt(:models, config.models)
+    |> maybe_put_opt(:strategy, config.strategy)
+    |> maybe_put_opt(:execution, config.execution_mode)
+    |> maybe_put_opt(:timeout, config.timeout_ms)
+    |> maybe_put_opt(:min_consensus, config.min_agreement)
+    |> merge_additional_options(config.options)
+  end
+
+  defp maybe_put_opt(opts, _key, nil), do: opts
+  defp maybe_put_opt(opts, _key, :none), do: opts
+
+  defp maybe_put_opt(opts, key, value) do
+    Keyword.put(opts, key, value)
+  end
+
+  defp merge_additional_options(opts, nil), do: opts
+
+  defp merge_additional_options(opts, additional) when is_map(additional) do
+    Enum.reduce(additional, opts, fn {key, value}, acc ->
+      atom_key = if is_binary(key), do: String.to_atom(key), else: key
+      Keyword.put_new(acc, atom_key, value)
+    end)
+  end
+
+  defp merge_additional_options(opts, _), do: opts
 
   defp prepare_telemetry_metadata(query, opts) do
     telemetry_meta = Keyword.get(opts, :telemetry_metadata, %{})

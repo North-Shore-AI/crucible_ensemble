@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2025-11-26
+
+### Added
+- **CrucibleIR Integration** - Added `crucible_ir` dependency (~> 0.1.1) for standardized configuration
+- **Pipeline Stage Implementation** - New `CrucibleEnsemble.Stage` module for pipeline integration
+  - Implements stage behaviour for use in crucible_framework pipelines
+  - Accepts `CrucibleIR.Reliability.Ensemble` configuration from experiment context
+  - Supports both pre-computed outputs and query execution
+  - Comprehensive stage introspection via `describe/1`
+- **IR Configuration Support** - Main `CrucibleEnsemble` module now accepts `CrucibleIR.Reliability.Ensemble` structs
+  - New `predict/3` overload accepting EnsembleConfig
+  - New `predict_async/3` overload accepting EnsembleConfig
+  - Automatic conversion of IR configuration to ensemble options
+  - Supports all IR configuration fields: strategy, execution_mode, models, weights, min_agreement, timeout_ms
+
+### Enhanced
+- Extended API to support both keyword list options and structured IR configuration
+- Improved flexibility for integration with other Crucible components
+
+### Documentation
+- Added Stage usage examples
+- Updated API documentation for IR configuration support
+- Comprehensive test coverage for Stage implementation (500+ lines of tests)
+
 ## [0.2.0] - 2025-11-25
 
 ### Added
