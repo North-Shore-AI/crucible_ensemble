@@ -130,36 +130,35 @@ defmodule CrucibleEnsemble.Vote.RankedChoice do
 
   defp extract_ballots(responses, normalization) do
     Enum.map(responses, fn resp ->
-      # Normalize first choice
       first_choice =
         Normalize.normalize_result(resp, normalization)
         |> to_string()
 
-      # Extract ranked choices if available
-      ranked_choices =
-        case Map.get(resp, :ranked_choices) do
-          nil ->
-            # No rankings provided, use only first choice
-            [first_choice]
-
-          choices when is_list(choices) ->
-            # Normalize all choices
-            Enum.map(choices, fn choice ->
-              Normalize.normalize(to_string(choice), normalization)
-              |> to_string()
-            end)
-            # Remove duplicates
-            |> Enum.uniq()
-
-          _ ->
-            [first_choice]
-        end
+      ranked_choices = extract_ranked_choices(resp, normalization, first_choice)
 
       %{
         choices: ranked_choices,
         original: resp
       }
     end)
+  end
+
+  defp extract_ranked_choices(resp, normalization, first_choice) do
+    case Map.get(resp, :ranked_choices) do
+      nil ->
+        [first_choice]
+
+      choices when is_list(choices) ->
+        choices
+        |> Enum.map(fn choice ->
+          Normalize.normalize(to_string(choice), normalization)
+          |> to_string()
+        end)
+        |> Enum.uniq()
+
+      _ ->
+        [first_choice]
+    end
   end
 
   defp instant_runoff_voting(ballots) do

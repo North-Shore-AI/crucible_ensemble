@@ -320,8 +320,7 @@ defmodule CrucibleEnsemble.Metrics do
 
     csv_content =
       [headers | rows]
-      |> Enum.map(&Enum.join(&1, ","))
-      |> Enum.join("\n")
+      |> Enum.map_join("\n", &Enum.join(&1, ","))
 
     File.write(path, csv_content)
   end

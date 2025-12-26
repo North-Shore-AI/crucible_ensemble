@@ -143,30 +143,28 @@ defmodule CrucibleEnsemble.Vote.SemanticSimilarity do
       hd(cluster)
     else
       # Find the text with highest average similarity to others in cluster
-      scores =
-        Enum.map(cluster, fn i ->
-          text_i = Enum.at(texts, i)
+      {best_idx, _score} =
+        cluster
+        |> Enum.map(&calculate_text_avg_similarity(&1, cluster, texts, metric))
+        |> Enum.max_by(fn {_i, score} -> score end)
 
-          avg_similarity =
-            cluster
-            |> Enum.reject(&(&1 == i))
-            |> Enum.map(fn j ->
-              text_j = Enum.at(texts, j)
-              Similarity.compute(text_i, text_j, metric)
-            end)
-            |> then(fn similarities ->
-              if Enum.empty?(similarities) do
-                1.0
-              else
-                Enum.sum(similarities) / length(similarities)
-              end
-            end)
-
-          {i, avg_similarity}
-        end)
-
-      {best_idx, _score} = Enum.max_by(scores, fn {_i, score} -> score end)
       best_idx
     end
+  end
+
+  defp calculate_text_avg_similarity(i, cluster, texts, metric) do
+    text_i = Enum.at(texts, i)
+    other_indices = Enum.reject(cluster, &(&1 == i))
+
+    avg_similarity =
+      if Enum.empty?(other_indices) do
+        1.0
+      else
+        other_indices
+        |> Enum.map(fn j -> Similarity.compute(text_i, Enum.at(texts, j), metric) end)
+        |> then(&(Enum.sum(&1) / length(&1)))
+      end
+
+    {i, avg_similarity}
   end
 end

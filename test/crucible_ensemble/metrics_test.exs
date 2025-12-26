@@ -2,6 +2,14 @@ defmodule CrucibleEnsemble.MetricsTest do
   use ExUnit.Case, async: true
   alias CrucibleEnsemble.Metrics
 
+  def handle_prediction_event(_event, measurements, metadata, %{pid: pid, ref: ref}) do
+    send(pid, {ref, measurements, metadata})
+  end
+
+  def handle_model_event(_event, measurements, metadata, %{pid: pid, ref: ref, status: status}) do
+    send(pid, {ref, status, measurements, metadata})
+  end
+
   describe "aggregate_stats/1" do
     test "calculates statistics from prediction data" do
       predictions = [
@@ -106,15 +114,13 @@ defmodule CrucibleEnsemble.MetricsTest do
     test "emits telemetry event" do
       # Attach a test handler
       ref = make_ref()
-      self_pid = self()
+      handler_config = %{pid: self(), ref: ref}
 
       :telemetry.attach(
         "test-prediction-handler",
         [:crucible_ensemble, :predict, :stop],
-        fn _event, measurements, metadata, _config ->
-          send(self_pid, {ref, measurements, metadata})
-        end,
-        nil
+        &__MODULE__.handle_prediction_event/4,
+        handler_config
       )
 
       metadata = %{
@@ -141,15 +147,13 @@ defmodule CrucibleEnsemble.MetricsTest do
   describe "record_model_response/4" do
     test "emits success event" do
       ref = make_ref()
-      self_pid = self()
+      handler_config = %{pid: self(), ref: ref, status: :success}
 
       :telemetry.attach(
         "test-model-success-handler",
         [:crucible_ensemble, :model, :stop],
-        fn _event, measurements, metadata, _config ->
-          send(self_pid, {ref, :success, measurements, metadata})
-        end,
-        nil
+        &__MODULE__.handle_model_event/4,
+        handler_config
       )
 
       Metrics.record_model_response(:model1, 500_000, 0.0005, true)
@@ -164,15 +168,13 @@ defmodule CrucibleEnsemble.MetricsTest do
 
     test "emits failure event" do
       ref = make_ref()
-      self_pid = self()
+      handler_config = %{pid: self(), ref: ref, status: :failure}
 
       :telemetry.attach(
         "test-model-failure-handler",
         [:crucible_ensemble, :model, :exception],
-        fn _event, measurements, metadata, _config ->
-          send(self_pid, {ref, :failure, measurements, metadata})
-        end,
-        nil
+        &__MODULE__.handle_model_event/4,
+        handler_config
       )
 
       Metrics.record_model_response(:model1, 500_000, 0.0, false)

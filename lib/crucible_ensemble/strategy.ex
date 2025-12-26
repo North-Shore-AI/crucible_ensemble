@@ -125,26 +125,29 @@ defmodule CrucibleEnsemble.Strategy do
 
       nil ->
         # Primary still running, start hedges
-        backup_tasks =
-          Enum.map(backups, fn model ->
-            Task.async(fn ->
-              Executor.call_model(model, query, opts)
-            end)
-          end)
+        handle_hedged_backups(primary_task, backups, query, opts, timeout - hedge_delay)
+    end
+  end
 
-        all_tasks = [primary_task | backup_tasks]
-        remaining_timeout = timeout - hedge_delay
+  defp handle_hedged_backups(primary_task, backups, query, opts, remaining_timeout) do
+    backup_tasks =
+      Enum.map(backups, fn model ->
+        Task.async(fn ->
+          Executor.call_model(model, query, opts)
+        end)
+      end)
 
-        # Wait for first successful result
-        case wait_for_first_success(all_tasks, remaining_timeout) do
-          {:ok, result} ->
-            # Cancel remaining tasks
-            Enum.each(all_tasks, &Task.shutdown(&1, :brutal_kill))
-            aggregate_results([result], opts)
+    all_tasks = [primary_task | backup_tasks]
 
-          {:error, _} = error ->
-            error
-        end
+    # Wait for first successful result
+    case wait_for_first_success(all_tasks, remaining_timeout) do
+      {:ok, result} ->
+        # Cancel remaining tasks
+        Enum.each(all_tasks, &Task.shutdown(&1, :brutal_kill))
+        aggregate_results([result], opts)
+
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -234,36 +237,37 @@ defmodule CrucibleEnsemble.Strategy do
     if remaining == 0 do
       :timeout
     else
-      # Check all tasks
-      case Task.yield_many(tasks, remaining) do
-        [] ->
-          :timeout
-
-        results ->
-          # Look for first success
-          success =
-            Enum.find_value(results, fn {_task, result} ->
-              case result do
-                {:ok, {:ok, _} = success_result} -> success_result
-                _ -> nil
-              end
-            end)
-
-          case success do
-            {:ok, _} = result ->
-              result
-
-            nil ->
-              # No success yet, filter out completed tasks and continue
-              still_running =
-                results
-                |> Enum.filter(fn {_task, result} -> result == nil end)
-                |> Enum.map(fn {task, _} -> task end)
-
-              wait_for_success_helper(still_running, timeout, start_time)
-          end
-      end
+      tasks
+      |> Task.yield_many(remaining)
+      |> process_yield_results(timeout, start_time)
     end
+  end
+
+  defp process_yield_results([], _timeout, _start_time), do: :timeout
+
+  defp process_yield_results(results, timeout, start_time) do
+    case find_first_success(results) do
+      {:ok, _} = result ->
+        result
+
+      nil ->
+        # No success yet, filter out completed tasks and continue
+        still_running =
+          results
+          |> Enum.filter(fn {_task, result} -> result == nil end)
+          |> Enum.map(fn {task, _} -> task end)
+
+        wait_for_success_helper(still_running, timeout, start_time)
+    end
+  end
+
+  defp find_first_success(results) do
+    Enum.find_value(results, fn {_task, result} ->
+      case result do
+        {:ok, {:ok, _} = success_result} -> success_result
+        _ -> nil
+      end
+    end)
   end
 
   defp aggregate_results(results, opts) do

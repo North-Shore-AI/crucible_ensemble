@@ -279,33 +279,34 @@ defmodule CrucibleEnsemble.Executor do
     end
   end
 
+  @env_var_mappings %{
+    gemini_flash: "GEMINI_API_KEY",
+    gemini_pro: "GEMINI_API_KEY",
+    openai_gpt4o_mini: "OPENAI_API_KEY",
+    openai_gpt4o: "OPENAI_API_KEY",
+    openai_gpt4: "OPENAI_API_KEY",
+    anthropic_haiku: "ANTHROPIC_API_KEY",
+    anthropic_sonnet: "ANTHROPIC_API_KEY",
+    anthropic_opus: "ANTHROPIC_API_KEY"
+  }
+
   defp model_to_env_var(model) do
-    case model do
-      :gemini_flash -> "GEMINI_API_KEY"
-      :gemini_pro -> "GEMINI_API_KEY"
-      :openai_gpt4o_mini -> "OPENAI_API_KEY"
-      :openai_gpt4o -> "OPENAI_API_KEY"
-      :openai_gpt4 -> "OPENAI_API_KEY"
-      :anthropic_haiku -> "ANTHROPIC_API_KEY"
-      :anthropic_sonnet -> "ANTHROPIC_API_KEY"
-      :anthropic_opus -> "ANTHROPIC_API_KEY"
-      _ -> "#{String.upcase(to_string(model))}_API_KEY"
-    end
+    Map.get(@env_var_mappings, model, "#{String.upcase(to_string(model))}_API_KEY")
   end
 
+  @model_name_mappings %{
+    gemini_flash: "gemini-2.0-flash-exp",
+    gemini_pro: "gemini-pro",
+    openai_gpt4o_mini: "gpt-4o-mini",
+    openai_gpt4o: "gpt-4o",
+    openai_gpt4: "gpt-4",
+    anthropic_haiku: "claude-3-haiku-20240307",
+    anthropic_sonnet: "claude-3-5-sonnet-20241022",
+    anthropic_opus: "claude-3-opus-20240229"
+  }
+
   defp map_model_name(model) do
-    # Map internal model names to API model names
-    case model do
-      :gemini_flash -> "gemini-2.0-flash-exp"
-      :gemini_pro -> "gemini-pro"
-      :openai_gpt4o_mini -> "gpt-4o-mini"
-      :openai_gpt4o -> "gpt-4o"
-      :openai_gpt4 -> "gpt-4"
-      :anthropic_haiku -> "claude-3-haiku-20240307"
-      :anthropic_sonnet -> "claude-3-5-sonnet-20241022"
-      :anthropic_opus -> "claude-3-opus-20240229"
-      _ -> to_string(model)
-    end
+    Map.get(@model_name_mappings, model, to_string(model))
   end
 
   defp make_llm_request(query, _opts) do

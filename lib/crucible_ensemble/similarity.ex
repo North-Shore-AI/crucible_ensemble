@@ -137,27 +137,30 @@ defmodule CrucibleEnsemble.Similarity do
     vector1 = term_frequency_vector(text1)
     vector2 = term_frequency_vector(text2)
 
-    # Handle edge cases
-    if map_size(vector1) == 0 and map_size(vector2) == 0 do
-      1.0
-    else
-      if map_size(vector1) == 0 or map_size(vector2) == 0 do
-        0.0
-      else
-        # Calculate dot product and magnitudes
-        dot_product = calculate_dot_product(vector1, vector2)
-        magnitude1 = calculate_magnitude(vector1)
-        magnitude2 = calculate_magnitude(vector2)
+    cond do
+      map_size(vector1) == 0 and map_size(vector2) == 0 ->
+        1.0
 
-        if magnitude1 == 0.0 or magnitude2 == 0.0 do
-          0.0
-        else
-          dot_product
-          |> Kernel./(magnitude1 * magnitude2)
-          |> Float.round(12)
-          |> clamp(0.0, 1.0)
-        end
-      end
+      map_size(vector1) == 0 or map_size(vector2) == 0 ->
+        0.0
+
+      true ->
+        calculate_cosine(vector1, vector2)
+    end
+  end
+
+  defp calculate_cosine(vector1, vector2) do
+    dot_product = calculate_dot_product(vector1, vector2)
+    magnitude1 = calculate_magnitude(vector1)
+    magnitude2 = calculate_magnitude(vector2)
+
+    if magnitude1 == 0.0 or magnitude2 == 0.0 do
+      0.0
+    else
+      dot_product
+      |> Kernel./(magnitude1 * magnitude2)
+      |> Float.round(12)
+      |> clamp(0.0, 1.0)
     end
   end
 
@@ -279,34 +282,30 @@ defmodule CrucibleEnsemble.Similarity do
     if length(cluster) == 1 do
       Enum.at(texts, hd(cluster))
     else
-      # Calculate average similarity for each text in cluster
-      scores =
-        Enum.map(cluster, fn i ->
-          text_i = Enum.at(texts, i)
-
-          # Calculate average similarity to all other texts in cluster
-          avg_similarity =
-            cluster
-            |> Enum.reject(&(&1 == i))
-            |> Enum.map(fn j ->
-              text_j = Enum.at(texts, j)
-              compute(text_i, text_j, metric)
-            end)
-            |> then(fn similarities ->
-              if Enum.empty?(similarities) do
-                1.0
-              else
-                Enum.sum(similarities) / length(similarities)
-              end
-            end)
-
-          {i, avg_similarity}
-        end)
-
       # Find text with highest average similarity
-      {best_index, _score} = Enum.max_by(scores, fn {_i, score} -> score end)
+      {best_index, _score} =
+        cluster
+        |> Enum.map(&calculate_cluster_avg_similarity(&1, cluster, texts, metric))
+        |> Enum.max_by(fn {_i, score} -> score end)
+
       Enum.at(texts, best_index)
     end
+  end
+
+  defp calculate_cluster_avg_similarity(i, cluster, texts, metric) do
+    text_i = Enum.at(texts, i)
+    other_indices = Enum.reject(cluster, &(&1 == i))
+
+    avg_similarity =
+      if Enum.empty?(other_indices) do
+        1.0
+      else
+        other_indices
+        |> Enum.map(fn j -> compute(text_i, Enum.at(texts, j), metric) end)
+        |> then(&(Enum.sum(&1) / length(&1)))
+      end
+
+    {i, avg_similarity}
   end
 
   # Private helper functions
@@ -325,26 +324,28 @@ defmodule CrucibleEnsemble.Similarity do
     {final_matrix, _} =
       Enum.reduce(string1_chars, {initial_matrix, 0}, fn char1, {matrix, i} ->
         prev_row = hd(matrix)
-
-        new_row =
-          Enum.reduce(string2_chars, [i + 1], fn char2, acc ->
-            j = length(acc) - 1
-            cost = if char1 == char2, do: 0, else: 1
-
-            deletion = Enum.at(prev_row, j + 1) + 1
-            insertion = hd(acc) + 1
-            substitution = Enum.at(prev_row, j) + cost
-
-            [Enum.min([deletion, insertion, substitution]) | acc]
-          end)
-          |> Enum.reverse()
-
+        new_row = calculate_distance_row(char1, string2_chars, prev_row, i)
         {[new_row | matrix], i + 1}
       end)
 
     final_matrix
     |> hd()
     |> List.last()
+  end
+
+  defp calculate_distance_row(char1, string2_chars, prev_row, i) do
+    string2_chars
+    |> Enum.reduce([i + 1], fn char2, acc ->
+      j = length(acc) - 1
+      cost = if char1 == char2, do: 0, else: 1
+
+      deletion = Enum.at(prev_row, j + 1) + 1
+      insertion = hd(acc) + 1
+      substitution = Enum.at(prev_row, j) + cost
+
+      [Enum.min([deletion, insertion, substitution]) | acc]
+    end)
+    |> Enum.reverse()
   end
 
   defp tokenize(text) do
@@ -377,62 +378,58 @@ defmodule CrucibleEnsemble.Similarity do
     |> :math.sqrt()
   end
 
+  defp merge_clusters(clusters, _similarity_matrix, _threshold) when length(clusters) < 2 do
+    clusters
+  end
+
   defp merge_clusters(clusters, similarity_matrix, threshold) do
-    # Nothing to merge when fewer than two clusters remain
-    if length(clusters) < 2 do
-      clusters
-    else
-      # Find clusters that can be merged
-      case find_mergeable_clusters(clusters, similarity_matrix, threshold) do
-        nil ->
-          # No more clusters can be merged
-          clusters
+    case find_mergeable_clusters(clusters, similarity_matrix, threshold) do
+      nil ->
+        # No more clusters can be merged
+        clusters
 
-        {cluster1_idx, cluster2_idx} ->
-          # Merge the two clusters
-          cluster1 = Enum.at(clusters, cluster1_idx)
-          cluster2 = Enum.at(clusters, cluster2_idx)
-          merged = cluster1 ++ cluster2
-
-          # Remove old clusters and add merged one
-          new_clusters =
-            clusters
-            |> Enum.with_index()
-            |> Enum.reject(fn {_cluster, idx} ->
-              idx == cluster1_idx or idx == cluster2_idx
-            end)
-            |> Enum.map(fn {cluster, _idx} -> cluster end)
-            |> then(fn remaining -> [merged | remaining] end)
-
-          # Continue merging
-          merge_clusters(new_clusters, similarity_matrix, threshold)
-      end
+      {cluster1_idx, cluster2_idx} ->
+        # Merge the two clusters
+        new_clusters = merge_cluster_pair(clusters, cluster1_idx, cluster2_idx)
+        merge_clusters(new_clusters, similarity_matrix, threshold)
     end
   end
 
+  defp merge_cluster_pair(clusters, idx1, idx2) do
+    cluster1 = Enum.at(clusters, idx1)
+    cluster2 = Enum.at(clusters, idx2)
+    merged = cluster1 ++ cluster2
+
+    clusters
+    |> Enum.with_index()
+    |> Enum.reject(fn {_cluster, idx} -> idx == idx1 or idx == idx2 end)
+    |> Enum.map(fn {cluster, _idx} -> cluster end)
+    |> then(fn remaining -> [merged | remaining] end)
+  end
+
+  defp find_mergeable_clusters(clusters, _similarity_matrix, _threshold)
+       when length(clusters) < 2 do
+    nil
+  end
+
   defp find_mergeable_clusters(clusters, similarity_matrix, threshold) do
-    if length(clusters) < 2 do
-      nil
-    else
-      # Find first pair of clusters that should be merged
-      max_index = length(clusters) - 1
+    max_index = length(clusters) - 1
 
-      cluster_pairs =
-        for i <- 0..(max_index - 1), j <- (i + 1)..max_index do
-          {i, j}
-        end
+    cluster_pairs =
+      for i <- 0..(max_index - 1), j <- (i + 1)..max_index do
+        {i, j}
+      end
 
-      Enum.find_value(cluster_pairs, fn {i, j} ->
-        cluster1 = Enum.at(clusters, i)
-        cluster2 = Enum.at(clusters, j)
+    Enum.find_value(cluster_pairs, fn {i, j} ->
+      cluster1 = Enum.at(clusters, i)
+      cluster2 = Enum.at(clusters, j)
 
-        if clusters_should_merge?(cluster1, cluster2, similarity_matrix, threshold) do
-          {i, j}
-        else
-          nil
-        end
-      end)
-    end
+      if clusters_should_merge?(cluster1, cluster2, similarity_matrix, threshold) do
+        {i, j}
+      else
+        nil
+      end
+    end)
   end
 
   defp clusters_should_merge?(cluster1, cluster2, similarity_matrix, threshold) do

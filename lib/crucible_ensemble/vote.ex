@@ -11,6 +11,12 @@ defmodule CrucibleEnsemble.Vote do
   """
 
   alias CrucibleEnsemble.Normalize
+  alias CrucibleEnsemble.Vote.BestConfidence
+  alias CrucibleEnsemble.Vote.Majority
+  alias CrucibleEnsemble.Vote.RankedChoice
+  alias CrucibleEnsemble.Vote.SemanticSimilarity
+  alias CrucibleEnsemble.Vote.Unanimous
+  alias CrucibleEnsemble.Vote.Weighted
 
   @type strategy ::
           :majority
@@ -62,32 +68,32 @@ defmodule CrucibleEnsemble.Vote do
   end
 
   def apply_strategy(responses, :majority, opts) do
-    CrucibleEnsemble.Vote.Majority.aggregate(responses, opts)
+    Majority.aggregate(responses, opts)
     |> maybe_use_original_answer(opts)
   end
 
   def apply_strategy(responses, :weighted, opts) do
-    CrucibleEnsemble.Vote.Weighted.aggregate(responses, opts)
+    Weighted.aggregate(responses, opts)
     |> maybe_use_original_answer(opts)
   end
 
   def apply_strategy(responses, :best_confidence, opts) do
-    CrucibleEnsemble.Vote.BestConfidence.aggregate(responses, opts)
+    BestConfidence.aggregate(responses, opts)
     |> maybe_use_original_answer(opts)
   end
 
   def apply_strategy(responses, :unanimous, opts) do
-    CrucibleEnsemble.Vote.Unanimous.aggregate(responses, opts)
+    Unanimous.aggregate(responses, opts)
     |> maybe_use_original_answer(opts)
   end
 
   def apply_strategy(responses, :semantic_similarity, opts) do
-    CrucibleEnsemble.Vote.SemanticSimilarity.aggregate(responses, opts)
+    SemanticSimilarity.aggregate(responses, opts)
     |> maybe_use_original_answer(opts)
   end
 
   def apply_strategy(responses, :ranked_choice, opts) do
-    CrucibleEnsemble.Vote.RankedChoice.aggregate(responses, opts)
+    RankedChoice.aggregate(responses, opts)
     |> maybe_use_original_answer(opts)
   end
 

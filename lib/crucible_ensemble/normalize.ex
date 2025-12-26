@@ -298,25 +298,27 @@ defmodule CrucibleEnsemble.Normalize do
     {final_matrix, _} =
       Enum.reduce(string1_chars, {initial_matrix, 0}, fn char1, {matrix, i} ->
         prev_row = hd(matrix)
-
-        new_row =
-          Enum.reduce(string2_chars, [i + 1], fn char2, acc ->
-            j = length(acc) - 1
-            cost = if char1 == char2, do: 0, else: 1
-
-            deletion = Enum.at(prev_row, j + 1) + 1
-            insertion = hd(acc) + 1
-            substitution = Enum.at(prev_row, j) + cost
-
-            [Enum.min([deletion, insertion, substitution]) | acc]
-          end)
-          |> Enum.reverse()
-
+        new_row = calculate_levenshtein_row(char1, string2_chars, prev_row, i)
         {[new_row | matrix], i + 1}
       end)
 
     final_matrix
     |> hd()
     |> List.last()
+  end
+
+  defp calculate_levenshtein_row(char1, string2_chars, prev_row, i) do
+    string2_chars
+    |> Enum.reduce([i + 1], fn char2, acc ->
+      j = length(acc) - 1
+      cost = if char1 == char2, do: 0, else: 1
+
+      deletion = Enum.at(prev_row, j + 1) + 1
+      insertion = hd(acc) + 1
+      substitution = Enum.at(prev_row, j) + cost
+
+      [Enum.min([deletion, insertion, substitution]) | acc]
+    end)
+    |> Enum.reverse()
   end
 end

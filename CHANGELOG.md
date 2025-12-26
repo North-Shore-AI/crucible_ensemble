@@ -2,29 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.3.0] - 2025-11-26
+## [0.3.0] - 2025-12-25
 
 ### Added
-- **CrucibleIR Integration** - Added `crucible_ir` dependency (~> 0.1.1) for standardized configuration
-- **Pipeline Stage Implementation** - New `CrucibleEnsemble.Stage` module for pipeline integration
-  - Implements stage behaviour for use in crucible_framework pipelines
-  - Accepts `CrucibleIR.Reliability.Ensemble` configuration from experiment context
-  - Supports both pre-computed outputs and query execution
-  - Comprehensive stage introspection via `describe/1`
-- **IR Configuration Support** - Main `CrucibleEnsemble` module now accepts `CrucibleIR.Reliability.Ensemble` structs
-  - New `predict/3` overload accepting EnsembleConfig
-  - New `predict_async/3` overload accepting EnsembleConfig
-  - Automatic conversion of IR configuration to ensemble options
-  - Supports all IR configuration fields: strategy, execution_mode, models, weights, min_agreement, timeout_ms
+- **CrucibleIR Integration** - Added `crucible_ir` dependency (~> 0.2.0) for standardized configuration
+- **Crucible Framework Integration** - Added `crucible_framework` dependency and `config/config.exs` to disable the framework repo and configure Logger metadata for ensemble metrics
+- **Crucible.Stage Behaviour** - `CrucibleEnsemble.Stage` now implements `Crucible.Stage`, uses `Crucible.Context`, stores artifacts/metrics/assigns, and marks stage completion
+- **Pipeline Stage Implementation** - Stage accepts `CrucibleIR.Reliability.Ensemble` config from experiment context and provides `describe/1` introspection
+- **IR Configuration Support** - `predict/3` and `predict_async/3` accept `CrucibleIR.Reliability.Ensemble` structs and map strategy, execution_mode, models, weights, min_agreement, and timeout_ms
+- **Stage Behaviour Tests** - New `test/crucible_ensemble/stage_behaviour_test.exs` suite for `Crucible.Stage` compliance
+- **Docs Snapshot (2025-12-25)** - Added `docs/20251225/current_state.md`, `docs/20251225/gaps.md`, and `docs/20251225/implementation_prompt.md`
+- **Branding** - Updated `assets/crucible_ensemble.svg` with the new multi-hexagon ensemble mark
 
-### Enhanced
-- Extended API to support both keyword list options and structured IR configuration
-- Improved flexibility for integration with other Crucible components
+### Changed
+- **Dependencies** - Added `ecto_sql` and `credo`, bumped `crucible_ir`, and refreshed the lockfile
+- **Stage Inputs** - Stage now operates on `outputs` in `Crucible.Context` (no direct query execution inside the stage)
+- **Stage Tests** - Updated `test/crucible_ensemble/stage_test.exs` to use `Crucible.Context` and new stage outputs
+- **Executor Mappings** - Replaced case statements with mapping tables for env-var lookup and API model names
+- **Streaming + Hedged Execution** - Refactored task spawning/yield handling and hedged backup flow into helpers; clarified early-stop consensus logic
+- **Similarity/Normalization/Voting Refactors** - Extracted helpers for Levenshtein rows, cosine similarity, cluster merging, ranked-choice parsing, semantic similarity scoring, and module aliasing
+- **Metrics Export** - Simplified CSV generation with `Enum.map_join/3`
+- **Tests** - Minor semantic similarity assertion tweak to avoid length checks
 
 ### Documentation
 - Added Stage usage examples
 - Updated API documentation for IR configuration support
-- Comprehensive test coverage for Stage implementation (500+ lines of tests)
+- Expanded Stage test coverage notes
 
 ## [0.2.0] - 2025-11-25
 

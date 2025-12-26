@@ -1,149 +1,106 @@
 defmodule CrucibleEnsemble.Stage do
   @moduledoc """
-  Pipeline stage for ensemble voting.
+  Crucible.Stage behaviour implementation for ensemble voting.
 
-  Implements stage behaviour for use in crucible_framework pipelines.
-  Uses CrucibleIR.Reliability.Ensemble configuration.
+  This stage integrates CrucibleEnsemble voting functionality into
+  crucible_framework pipelines, allowing ensemble voting to be composed
+  with other stages like DataLoad, BackendCall, Bench, etc.
 
   ## Context Requirements
 
-  The stage expects the following in the context:
+  The stage expects the following in the Crucible.Context:
 
   - `experiment.reliability.ensemble` - CrucibleIR.Reliability.Ensemble configuration
   - `outputs` - Model responses to vote on (list of maps with `:response` key)
 
-  Or alternatively:
+  ## Output
 
-  - `query` - Query string to execute on models
-  - `experiment.reliability.ensemble` - Configuration including model list
+  Stores in the context:
 
-  ## Returns
-
-  Updates context with:
-
-  - `ensemble_result` - The voting result
-  - `consensus` - Consensus score (0.0 to 1.0)
-  - `answer` - The final answer selected by voting
+  - `artifacts[:ensemble_result]` - The full voting result map
+  - `metrics[:consensus]` - Consensus score (0.0 to 1.0)
+  - `metrics[:ensemble_latency_us]` - Voting latency in microseconds
+  - `metrics[:ensemble_strategy]` - Strategy used for voting
+  - `assigns[:answer]` - The final answer selected by voting
+  - `assigns[:ensemble_metadata]` - Additional metadata from voting
 
   ## Examples
 
-      # With existing model outputs
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %CrucibleIR.Reliability.Ensemble{
-              strategy: :majority,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
-          %{response: "4", model: :model1},
-          %{response: "4", model: :model2},
-          %{response: "5", model: :model3}
-        ]
-      }
+      # In a pipeline
+      stages = [
+        {Crucible.Stage.DataLoad, %{}},
+        {Crucible.Stage.BackendCall, %{}},
+        {CrucibleEnsemble.Stage, %{normalization: :lowercase_trim}},
+        {Crucible.Stage.Bench, %{}}
+      ]
 
-      {:ok, updated_context} = CrucibleEnsemble.Stage.run(context)
-      updated_context.answer
+      {:ok, ctx} = Crucible.Pipeline.Runner.run(experiment, stages: stages)
+      ctx.assigns[:answer]
       # => "4"
 
-      # With query execution
-      context = %{
-        query: "What is 2+2?",
-        experiment: %{
-          reliability: %{
-            ensemble: %CrucibleIR.Reliability.Ensemble{
-              strategy: :majority,
-              execution_mode: :parallel,
-              models: [:gemini_flash, :openai_gpt4o_mini]
-            }
-          }
-        }
-      }
-
-      {:ok, updated_context} = CrucibleEnsemble.Stage.run(context)
-
   """
 
+  @behaviour Crucible.Stage
+
+  require Logger
+
+  alias Crucible.Context
   alias CrucibleIR.Reliability.Ensemble, as: EnsembleConfig
 
-  @doc """
-  Runs ensemble voting on model responses.
+  @impl true
+  @spec run(Context.t(), map()) :: {:ok, Context.t()} | {:error, term()}
+  def run(%Context{experiment: experiment} = ctx, opts) do
+    start_time = System.monotonic_time(:microsecond)
 
-  Expects context to have:
-  - `experiment.reliability.ensemble` - Ensemble configuration
-  - Either `outputs` (model responses) or `query` (to execute models)
+    with {:ok, ensemble_config} <- extract_ensemble_config(experiment),
+         {:ok, responses} <- get_responses(ctx),
+         {:ok, vote_result} <- apply_voting(responses, ensemble_config, opts) do
+      end_time = System.monotonic_time(:microsecond)
+      latency_us = end_time - start_time
 
-  Returns updated context with ensemble results.
+      # Store results using Context helpers
+      updated_ctx =
+        ctx
+        |> Context.put_artifact(:ensemble_result, vote_result)
+        |> Context.put_metric(:consensus, vote_result.consensus)
+        |> Context.put_metric(:ensemble_latency_us, latency_us)
+        |> Context.put_metric(:ensemble_strategy, vote_result.strategy)
+        |> Context.assign(:answer, vote_result.answer)
+        |> Context.assign(:ensemble_metadata, Map.get(vote_result, :metadata, %{}))
+        |> Context.mark_stage_complete(:ensemble_voting)
 
-  ## Options
+      Logger.debug(
+        "Ensemble voting complete: strategy=#{vote_result.strategy}, " <>
+          "consensus=#{Float.round(vote_result.consensus, 4)}, " <>
+          "latency_us=#{latency_us}"
+      )
 
-  - `:normalization` - Response normalization strategy (default: `:lowercase_trim`)
-  - `:return_original_answer` - Return original text instead of normalized (default: `false`)
-  - `:api_keys` - Map of model => API key for query execution
-  - `:telemetry_metadata` - Additional telemetry metadata
-
-  """
-  @spec run(map(), map()) :: {:ok, map()} | {:error, term()}
-  def run(context, opts \\ %{}) when is_map(context) and is_map(opts) do
-    # Convert opts to keyword list if it's a map
-    opts_keyword = if is_map(opts), do: Map.to_list(opts), else: opts
-
-    with {:ok, ensemble_config} <- extract_ensemble_config(context),
-         {:ok, responses} <- get_or_execute_responses(context, ensemble_config, opts_keyword),
-         {:ok, vote_result} <- apply_voting(responses, ensemble_config, opts_keyword) do
-      # Update context with results
-      updated_context =
-        context
-        |> Map.put(:ensemble_result, vote_result)
-        |> Map.put(:consensus, vote_result.consensus)
-        |> Map.put(:answer, vote_result.answer)
-        |> Map.put(:ensemble_metadata, Map.get(vote_result, :metadata, %{}))
-
-      {:ok, updated_context}
+      {:ok, updated_ctx}
     else
-      {:error, _reason} = error -> error
+      {:error, _reason} = error ->
+        Logger.warning("Ensemble voting failed: #{inspect(error)}")
+        error
     end
   end
 
-  @doc """
-  Describes this stage for introspection.
-
-  Returns metadata about the stage including name, purpose, and configuration options.
-
-  ## Options
-
-  Currently unused but reserved for future extensions.
-
-  ## Examples
-
-      iex> CrucibleEnsemble.Stage.describe()
-      %{
-        name: "ensemble_voting",
-        description: "Multi-model ensemble voting stage",
-        inputs: [:outputs, :query],
-        outputs: [:ensemble_result, :consensus, :answer],
-        config_type: CrucibleIR.Reliability.Ensemble
-      }
-
-  """
+  @impl true
   @spec describe(map()) :: map()
   def describe(_opts \\ %{}) do
     %{
       name: "ensemble_voting",
-      description: "Multi-model ensemble voting stage",
-      version: "0.3.0",
+      description: "Multi-model ensemble voting stage using CrucibleEnsemble",
+      version: "0.4.0",
+      behaviour: Crucible.Stage,
       inputs: [
-        :outputs,
-        :query,
-        {:experiment, :reliability, :ensemble}
+        {:context, :outputs, "List of model response maps"},
+        {:experiment, :reliability, :ensemble, "EnsembleConfig struct"}
       ],
       outputs: [
-        :ensemble_result,
-        :consensus,
-        :answer,
-        :ensemble_metadata
+        {:artifact, :ensemble_result, "Full voting result map"},
+        {:metric, :consensus, "Consensus score 0.0-1.0"},
+        {:metric, :ensemble_latency_us, "Voting latency"},
+        {:metric, :ensemble_strategy, "Strategy used"},
+        {:assign, :answer, "Final answer"}
       ],
       config_type: CrucibleIR.Reliability.Ensemble,
       strategies: [
@@ -163,109 +120,59 @@ defmodule CrucibleEnsemble.Stage do
     }
   end
 
-  # Private helper functions
+  # ============================================================================
+  # Private Helpers
+  # ============================================================================
 
-  defp extract_ensemble_config(context) do
-    case get_in(context, [:experiment, :reliability, :ensemble]) do
-      %EnsembleConfig{} = config ->
-        {:ok, config}
-
-      nil ->
-        {:error, :missing_ensemble_config}
-
-      other ->
-        {:error, {:invalid_ensemble_config, other}}
-    end
+  defp extract_ensemble_config(%{reliability: %{ensemble: %EnsembleConfig{} = config}}) do
+    {:ok, config}
   end
 
-  defp get_or_execute_responses(context, ensemble_config, opts) do
-    cond do
-      # Case 1: Already have outputs/responses
-      Map.has_key?(context, :outputs) ->
-        {:ok, context.outputs}
-
-      Map.has_key?(context, :responses) ->
-        {:ok, context.responses}
-
-      # Case 2: Have query, need to execute
-      Map.has_key?(context, :query) ->
-        execute_ensemble(context.query, ensemble_config, opts)
-
-      true ->
-        {:error, :missing_query_or_outputs}
-    end
+  defp extract_ensemble_config(%{reliability: %{ensemble: config}}) when is_map(config) do
+    # Try to convert map to struct
+    {:ok, struct(EnsembleConfig, config)}
+  rescue
+    _ -> {:error, {:invalid_ensemble_config, config}}
   end
 
-  defp execute_ensemble(query, %EnsembleConfig{} = config, opts) do
-    # Build options from ensemble config
-    ensemble_opts =
-      opts
-      |> Keyword.put(:models, config.models || [])
-      |> Keyword.put(:strategy, config.strategy)
-      |> Keyword.put(:execution, config.execution_mode)
-      |> maybe_put(:timeout, config.timeout_ms)
-      |> maybe_put(:min_consensus, config.min_agreement)
-      |> merge_config_options(config.options)
+  defp extract_ensemble_config(%{reliability: %{ensemble: config}}) do
+    # Non-map config (e.g., string or other invalid type)
+    {:error, {:invalid_ensemble_config, config}}
+  end
 
-    # Execute ensemble prediction
-    case CrucibleEnsemble.predict(query, ensemble_opts) do
-      {:ok, result} ->
-        # Extract responses from result if available
-        # Otherwise create mock responses from the result
-        responses = [
-          %{
-            response: result.answer,
-            model: :ensemble,
-            metadata: result.metadata
-          }
-        ]
+  defp extract_ensemble_config(_) do
+    {:error, :missing_ensemble_config}
+  end
 
-        {:ok, responses}
+  defp get_responses(%Context{outputs: outputs}) when is_list(outputs) and outputs != [] do
+    {:ok, outputs}
+  end
 
-      {:error, _reason} = error ->
-        error
-    end
+  defp get_responses(%Context{outputs: []}) do
+    {:error, :no_responses}
+  end
+
+  defp get_responses(%Context{outputs: nil}) do
+    {:error, :no_responses}
   end
 
   defp apply_voting(responses, %EnsembleConfig{} = config, opts) do
-    # Build voting options
+    # Build voting options from map opts
     voting_opts =
       opts
+      |> Map.to_list()
       |> Keyword.put_new(:normalization, :lowercase_trim)
       |> Keyword.put_new(:return_original_answer, false)
-
-    # Add weights if using weighted strategy
-    voting_opts =
-      if config.strategy == :weighted and config.weights do
-        Keyword.put(voting_opts, :weights, config.weights)
-      else
-        voting_opts
-      end
+      |> maybe_add_weights(config)
 
     # Apply the voting strategy
-    case CrucibleEnsemble.Vote.apply_strategy(responses, config.strategy, voting_opts) do
-      {:ok, vote_result} ->
-        {:ok, vote_result}
-
-      {:error, _reason} = error ->
-        error
-    end
+    CrucibleEnsemble.Vote.apply_strategy(responses, config.strategy, voting_opts)
   end
 
-  defp maybe_put(keyword, _key, nil), do: keyword
-
-  defp maybe_put(keyword, key, value) do
-    Keyword.put(keyword, key, value)
+  defp maybe_add_weights(opts, %EnsembleConfig{strategy: :weighted, weights: weights})
+       when is_map(weights) and map_size(weights) > 0 do
+    Keyword.put(opts, :weights, weights)
   end
 
-  defp merge_config_options(keyword, nil), do: keyword
-
-  defp merge_config_options(keyword, options) when is_map(options) do
-    Enum.reduce(options, keyword, fn {key, value}, acc ->
-      atom_key = if is_binary(key), do: String.to_atom(key), else: key
-      Keyword.put_new(acc, atom_key, value)
-    end)
-  end
-
-  defp merge_config_options(keyword, _options), do: keyword
+  defp maybe_add_weights(opts, _config), do: opts
 end

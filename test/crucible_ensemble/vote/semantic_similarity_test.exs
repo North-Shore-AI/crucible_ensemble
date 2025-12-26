@@ -212,7 +212,7 @@ defmodule CrucibleEnsemble.Vote.SemanticSimilarityTest do
 
       assert Map.has_key?(result, :winner_cluster)
       assert is_list(result.winner_cluster)
-      assert length(result.winner_cluster) >= 1
+      assert not Enum.empty?(result.winner_cluster)
     end
 
     test "includes sample_response metadata" do

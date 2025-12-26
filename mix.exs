@@ -31,13 +31,16 @@ defmodule CrucibleEnsemble.MixProject do
       # Core dependencies
       # Note: req_llm is optional - the library provides a mock implementation for testing
       # {:req_llm, git: "https://github.com/calebjcourtney/req_llm.git", branch: "main"},
-      {:crucible_ir, "~> 0.1.1"},
+      {:crucible_framework, "~> 0.4.0"},
+      {:crucible_ir, "~> 0.2.0"},
+      {:ecto_sql, "~> 3.11"},
       {:jason, "~> 1.4"},
       {:telemetry, "~> 1.2"},
 
       # Development and testing
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:dialyxir, "~> 1.4", only: :dev, runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:mox, "~> 1.1", only: :test}
     ]
   end

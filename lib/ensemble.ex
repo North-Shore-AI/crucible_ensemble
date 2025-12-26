@@ -53,7 +53,7 @@ defmodule CrucibleEnsemble do
   - **BEAM Concurrency**: Leverages Elixir's lightweight processes
   """
 
-  alias CrucibleEnsemble.{Strategy, Pricing}
+  alias CrucibleEnsemble.{Pricing, Strategy}
   alias CrucibleIR.Reliability.Ensemble, as: EnsembleConfig
 
   @type query :: String.t()
@@ -335,19 +335,7 @@ defmodule CrucibleEnsemble do
 
     Stream.resource(
       # Start function: spawn all model tasks
-      fn ->
-        tasks =
-          Enum.map(models, fn model ->
-            task =
-              Task.async(fn ->
-                CrucibleEnsemble.Executor.call_model(model, query, opts)
-              end)
-
-            {task, model}
-          end)
-
-        {tasks, [], timeout}
-      end,
+      fn -> spawn_model_tasks(models, query, opts, timeout) end,
       # Next function: yield results as they complete
       fn
         {[], results, _timeout} ->
@@ -371,30 +359,9 @@ defmodule CrucibleEnsemble do
 
         {tasks, results, timeout} ->
           # Wait for next result
-          case Task.yield_many(tasks, timeout) do
-            [] ->
-              # Timeout - complete with what we have
-              {:halt, {[], results, 0}}
-
-            completions ->
-              # Process completions
-              {new_results, still_running} = process_completions(completions, results)
-
-              # Check for early stop
-              if should_early_stop?(new_results, early_stop) do
-                # Cancel remaining tasks
-                Enum.each(still_running, fn {task, _} -> Task.shutdown(task, :brutal_kill) end)
-                {:halt, {[], new_results, 0}}
-              else
-                # Emit new results
-                events =
-                  Enum.map(new_results -- results, fn {:ok, result} ->
-                    {:response, result.model, result}
-                  end)
-
-                {events, {still_running, new_results, timeout}}
-              end
-          end
+          tasks
+          |> Task.yield_many(timeout)
+          |> handle_stream_completions(results, early_stop, timeout)
 
         :halt ->
           {:halt, :halt}
@@ -402,7 +369,7 @@ defmodule CrucibleEnsemble do
       # Cleanup function
       fn
         {tasks, _results, _timeout} ->
-          Enum.each(tasks, fn {task, _} -> Task.shutdown(task, :brutal_kill) end)
+          Enum.each(tasks, &Task.shutdown(&1, :brutal_kill))
 
         :halt ->
           :ok
@@ -420,6 +387,15 @@ defmodule CrucibleEnsemble do
     |> maybe_put_opt(:timeout, config.timeout_ms)
     |> maybe_put_opt(:min_consensus, config.min_agreement)
     |> merge_additional_options(config.options)
+  end
+
+  defp spawn_model_tasks(models, query, opts, timeout) do
+    tasks =
+      Enum.map(models, fn model ->
+        Task.async(fn -> CrucibleEnsemble.Executor.call_model(model, query, opts) end)
+      end)
+
+    {tasks, [], timeout}
   end
 
   defp maybe_put_opt(opts, _key, nil), do: opts
@@ -460,50 +436,70 @@ defmodule CrucibleEnsemble do
   end
 
   defp process_completions(completions, existing_results) do
-    {new_results, still_running} =
-      Enum.reduce(completions, {existing_results, []}, fn
-        {_task, {:ok, result}}, {results, running} ->
-          {[result | results], running}
+    Enum.reduce(completions, {existing_results, []}, fn
+      {_task, {:ok, {:ok, result}}}, {results, running} ->
+        {[{:ok, result} | results], running}
 
-        {task, nil}, {results, running} ->
-          # Task still running
-          {results, [{task, :unknown_model} | running]}
+      {_task, {:ok, {:error, error}}}, {results, running} ->
+        {[{:error, error} | results], running}
 
-        {_task, _error}, {results, running} ->
-          # Task failed, ignore
-          {results, running}
-      end)
+      {_task, {:exit, reason}}, {results, running} ->
+        {[{:error, %{error: :task_exit, reason: reason}} | results], running}
 
-    {new_results, still_running}
+      {task, nil}, {results, running} ->
+        {results, [task | running]}
+    end)
   end
 
-  defp should_early_stop?(results, threshold) do
-    if length(results) < 2 do
-      false
+  defp handle_stream_completions([], results, _early_stop, _timeout) do
+    {:halt, {[], results, 0}}
+  end
+
+  defp handle_stream_completions(completions, results, early_stop, timeout) do
+    {new_results, still_running} = process_completions(completions, results)
+
+    if should_early_stop?(new_results, early_stop) do
+      Enum.each(still_running, &Task.shutdown(&1, :brutal_kill))
+      events = build_response_events(new_results, results)
+      {events, {[], new_results, 0}}
     else
-      successes =
-        Enum.filter(results, fn
-          {:ok, _} -> true
-          _ -> false
-        end)
+      events = build_response_events(new_results, results)
+      {events, {still_running, new_results, timeout}}
+    end
+  end
 
-      if length(successes) < 2 do
-        false
-      else
-        responses =
-          successes
-          |> Enum.map(fn {:ok, result} -> result.response end)
-          |> Enum.frequencies()
+  defp should_early_stop?(results, _threshold) when length(results) < 2, do: false
 
-        if map_size(responses) > 0 do
-          max_count = responses |> Map.values() |> Enum.max()
-          total = length(successes)
-          consensus = max_count / total
-          consensus >= threshold
-        else
-          false
-        end
-      end
+  defp should_early_stop?(results, threshold) do
+    successes =
+      Enum.filter(results, fn
+        {:ok, _} -> true
+        _ -> false
+      end)
+
+    check_consensus(successes, threshold)
+  end
+
+  defp check_consensus(successes, _threshold) when length(successes) < 2, do: false
+
+  defp check_consensus(successes, threshold) do
+    responses =
+      successes
+      |> Enum.map(fn {:ok, result} -> result.response end)
+      |> Enum.frequencies()
+
+    if map_size(responses) > 0 do
+      max_count = responses |> Map.values() |> Enum.max()
+      total = length(successes)
+      max_count / total >= threshold
+    else
+      false
+    end
+  end
+
+  defp build_response_events(new_results, results) do
+    for {:ok, result} <- new_results -- results do
+      {:response, result.model, result}
     end
   end
 

@@ -1,261 +1,236 @@
 defmodule CrucibleEnsemble.StageTest do
+  @moduledoc """
+  Tests for CrucibleEnsemble.Stage module.
+
+  These tests verify the ensemble voting stage functionality using
+  the Crucible.Context struct from crucible_framework.
+  """
   use ExUnit.Case, async: true
+  import ExUnit.CaptureLog
+
+  alias Crucible.Context
   alias CrucibleEnsemble.Stage
+  alias CrucibleIR.BackendRef
+  alias CrucibleIR.Experiment
   alias CrucibleIR.Reliability.Ensemble, as: EnsembleConfig
+  alias CrucibleIR.StageDef
+
+  # Helper to build a valid Crucible.Context for testing
+  defp build_context(ensemble_config, outputs) do
+    experiment = %Experiment{
+      id: "test_exp",
+      backend: %BackendRef{id: :mock},
+      pipeline: [%StageDef{name: :ensemble}],
+      reliability: %{ensemble: ensemble_config}
+    }
+
+    %Context{
+      experiment_id: "test_exp",
+      run_id: "test_run_#{System.unique_integer([:positive])}",
+      experiment: experiment,
+      outputs: outputs
+    }
+  end
+
+  defp run_stage(ctx, opts) do
+    test_pid = self()
+
+    log =
+      capture_log(fn ->
+        send(test_pid, {:stage_result, Stage.run(ctx, opts)})
+      end)
+
+    result =
+      receive do
+        {:stage_result, result} -> result
+      end
+
+    {result, log}
+  end
+
+  defp run_stage_ok(ctx, opts) do
+    {{:ok, result}, log} = run_stage(ctx, opts)
+    assert log =~ "Ensemble voting complete"
+    result
+  end
+
+  defp run_stage_error(ctx, opts) do
+    {{:error, reason}, log} = run_stage(ctx, opts)
+    assert log =~ "Ensemble voting failed"
+    reason
+  end
 
   describe "run/2 with existing outputs" do
     test "applies majority voting to outputs" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :majority,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{strategy: :majority, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
           %{response: "4", model: :model1},
           %{response: "4", model: :model2},
           %{response: "5", model: :model3}
-        ]
-      }
+        ])
 
-      {:ok, result} = Stage.run(context)
+      result = run_stage_ok(ctx, %{})
 
-      assert result.answer == "4"
-      assert result.consensus == 2 / 3
-      assert result.ensemble_result.strategy == :majority
-      assert Map.has_key?(result, :ensemble_metadata)
+      assert result.assigns[:answer] == "4"
+      assert Context.get_metric(result, :consensus) == 2 / 3
+      ensemble_result = Context.get_artifact(result, :ensemble_result)
+      assert ensemble_result.strategy == :majority
+      assert Map.has_key?(result.assigns, :ensemble_metadata)
     end
 
     test "applies weighted voting to outputs" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :weighted,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{strategy: :weighted, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
           %{response: "A", model: :model1, confidence: 0.9},
           %{response: "B", model: :model2, confidence: 0.6},
           %{response: "B", model: :model3, confidence: 0.5}
-        ]
-      }
+        ])
 
-      {:ok, result} = Stage.run(context)
+      result = run_stage_ok(ctx, %{})
 
       # B has total weight 1.1 (0.6 + 0.5), A has 0.9
-      assert result.answer == "b"
-      assert result.ensemble_result.strategy == :weighted
+      assert result.assigns[:answer] == "b"
+      ensemble_result = Context.get_artifact(result, :ensemble_result)
+      assert ensemble_result.strategy == :weighted
     end
 
     test "applies best_confidence strategy" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :best_confidence,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{strategy: :best_confidence, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
           %{response: "A", model: :model1, confidence: 0.6},
           %{response: "B", model: :model2, confidence: 0.9},
           %{response: "C", model: :model3, confidence: 0.7}
-        ]
-      }
+        ])
 
-      {:ok, result} = Stage.run(context)
+      result = run_stage_ok(ctx, %{})
 
-      assert result.answer == "b"
-      assert result.consensus == 0.9
-      assert result.ensemble_result.strategy == :best_confidence
+      assert result.assigns[:answer] == "b"
+      assert Context.get_metric(result, :consensus) == 0.9
+      ensemble_result = Context.get_artifact(result, :ensemble_result)
+      assert ensemble_result.strategy == :best_confidence
     end
 
     test "applies unanimous voting successfully" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :unanimous,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{strategy: :unanimous, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
           %{response: "Paris", model: :model1},
           %{response: "Paris", model: :model2},
           %{response: "Paris", model: :model3}
-        ]
-      }
+        ])
 
-      {:ok, result} = Stage.run(context)
+      result = run_stage_ok(ctx, %{})
 
-      assert result.answer == "paris"
-      assert result.consensus == 1.0
-      assert result.ensemble_result.strategy == :unanimous
+      assert result.assigns[:answer] == "paris"
+      assert Context.get_metric(result, :consensus) == 1.0
+      ensemble_result = Context.get_artifact(result, :ensemble_result)
+      assert ensemble_result.strategy == :unanimous
     end
 
     test "handles unanimous voting failure" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :unanimous,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{strategy: :unanimous, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
           %{response: "Paris", model: :model1},
           %{response: "London", model: :model2},
           %{response: "Paris", model: :model3}
-        ]
-      }
+        ])
 
-      {:error, error} = Stage.run(context)
+      error = run_stage_error(ctx, %{})
 
       assert error.reason == :no_unanimous_consensus
     end
 
-    test "accepts context with 'responses' key" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :majority,
-              execution_mode: :parallel
-            }
-          }
-        },
-        responses: [
-          %{response: "yes", model: :model1},
-          %{response: "yes", model: :model2},
-          %{response: "no", model: :model3}
-        ]
-      }
-
-      {:ok, result} = Stage.run(context)
-
-      assert result.answer == "yes"
-      assert result.consensus == 2 / 3
-    end
-
     test "respects normalization option" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :majority,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{strategy: :majority, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
           %{response: "YES", model: :model1},
           %{response: "yes", model: :model2},
           %{response: "Yes", model: :model3}
-        ]
-      }
+        ])
 
-      {:ok, result} = Stage.run(context, %{normalization: :lowercase_trim})
+      result = run_stage_ok(ctx, %{normalization: :lowercase_trim})
 
-      assert result.answer == "yes"
-      assert result.consensus == 1.0
+      assert result.assigns[:answer] == "yes"
+      assert Context.get_metric(result, :consensus) == 1.0
     end
 
     test "respects return_original_answer option" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :majority,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{strategy: :majority, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
           %{response: "The answer is 4", model: :model1},
           %{response: "4", model: :model2},
           %{response: "Four", model: :model3}
-        ]
-      }
+        ])
 
-      {:ok, result} =
-        Stage.run(context, %{
+      result =
+        run_stage_ok(ctx, %{
           normalization: :numeric,
           return_original_answer: true
         })
 
       # Should return one of the original responses
-      assert result.answer in ["The answer is 4", "4", "Four"]
+      assert result.assigns[:answer] in ["The answer is 4", "4", "Four"]
     end
   end
 
   describe "run/2 error handling" do
     test "returns error when ensemble config is missing" do
-      context = %{
-        outputs: [
-          %{response: "4", model: :model1}
-        ]
+      experiment = %Experiment{
+        id: "test",
+        backend: %BackendRef{id: :mock},
+        pipeline: [%StageDef{name: :ensemble}],
+        reliability: %{}
       }
 
-      {:error, reason} = Stage.run(context)
+      ctx = %Context{
+        experiment_id: "test",
+        run_id: "run1",
+        experiment: experiment,
+        outputs: [%{response: "4", model: :model1}]
+      }
+
+      reason = run_stage_error(ctx, %{})
 
       assert reason == :missing_ensemble_config
     end
 
     test "returns error when ensemble config is invalid type" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: "not a valid config"
-          }
-        },
-        outputs: [
-          %{response: "4", model: :model1}
-        ]
+      experiment = %Experiment{
+        id: "test",
+        backend: %BackendRef{id: :mock},
+        pipeline: [%StageDef{name: :ensemble}],
+        reliability: %{ensemble: "not a valid config"}
       }
 
-      {:error, {:invalid_ensemble_config, _}} = Stage.run(context)
+      ctx = %Context{
+        experiment_id: "test",
+        run_id: "run1",
+        experiment: experiment,
+        outputs: [%{response: "4", model: :model1}]
+      }
+
+      reason = run_stage_error(ctx, %{})
+      assert {:invalid_ensemble_config, _} = reason
     end
 
-    test "returns error when both query and outputs are missing" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :majority,
-              execution_mode: :parallel
-            }
-          }
-        }
-      }
+    test "returns error when outputs are empty" do
+      config = %EnsembleConfig{strategy: :majority, execution_mode: :parallel}
+      ctx = build_context(config, [])
 
-      {:error, reason} = Stage.run(context)
-
-      assert reason == :missing_query_or_outputs
-    end
-
-    test "returns error when no responses provided" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :majority,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: []
-      }
-
-      {:error, reason} = Stage.run(context)
+      reason = run_stage_error(ctx, %{})
 
       assert reason == :no_responses
     end
@@ -263,109 +238,89 @@ defmodule CrucibleEnsemble.StageTest do
 
   describe "run/2 with semantic_similarity strategy" do
     test "groups similar responses" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :semantic_similarity,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{strategy: :semantic_similarity, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
           %{response: "The answer is 4", model: :model1},
           %{response: "4", model: :model2},
           %{response: "Four", model: :model3}
-        ]
-      }
+        ])
 
-      {:ok, result} =
-        Stage.run(context, %{
+      result =
+        run_stage_ok(ctx, %{
           similarity_threshold: 0.3,
           similarity_metric: :levenshtein
         })
 
       # Should recognize all as similar answers
-      assert result.answer in ["the answer is 4", "4", "four"]
-      assert result.ensemble_result.strategy == :semantic_similarity
+      assert result.assigns[:answer] in ["the answer is 4", "4", "four"]
+      ensemble_result = Context.get_artifact(result, :ensemble_result)
+      assert ensemble_result.strategy == :semantic_similarity
     end
   end
 
   describe "run/2 with ranked_choice strategy" do
     test "applies ranked choice voting" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :ranked_choice,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{strategy: :ranked_choice, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
           %{response: ["A", "B", "C"], model: :model1},
           %{response: ["B", "A", "C"], model: :model2},
           %{response: ["A", "C", "B"], model: :model3}
-        ]
-      }
+        ])
 
-      {:ok, result} =
-        Stage.run(context, %{
+      result =
+        run_stage_ok(ctx, %{
           ranking_method: :instant_runoff
         })
 
-      assert result.ensemble_result.strategy == :ranked_choice
-      assert result.answer != nil
+      ensemble_result = Context.get_artifact(result, :ensemble_result)
+      assert ensemble_result.strategy == :ranked_choice
+      assert result.assigns[:answer] != nil
     end
   end
 
   describe "run/2 with config options" do
     test "uses timeout from ensemble config" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :majority,
-              execution_mode: :parallel,
-              timeout_ms: 3000
-            }
-          }
-        },
-        outputs: [
-          %{response: "4", model: :model1},
-          %{response: "4", model: :model2}
-        ]
+      config = %EnsembleConfig{
+        strategy: :majority,
+        execution_mode: :parallel,
+        timeout_ms: 3000
       }
 
-      {:ok, result} = Stage.run(context)
+      ctx =
+        build_context(config, [
+          %{response: "4", model: :model1},
+          %{response: "4", model: :model2}
+        ])
+
+      result = run_stage_ok(ctx, %{})
 
       # Should complete successfully with the timeout setting
-      assert result.answer == "4"
+      assert result.assigns[:answer] == "4"
     end
 
     test "uses min_agreement from ensemble config" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :majority,
-              execution_mode: :sequential,
-              min_agreement: 0.8
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{
+        strategy: :majority,
+        execution_mode: :sequential,
+        min_agreement: 0.8
+      }
+
+      ctx =
+        build_context(config, [
           %{response: "4", model: :model1},
           %{response: "4", model: :model2},
           %{response: "5", model: :model3}
-        ]
-      }
+        ])
 
-      {:ok, result} = Stage.run(context)
+      result = run_stage_ok(ctx, %{})
 
       # Consensus is 2/3 = 0.667, which is less than 0.8
-      assert result.consensus == 2 / 3
-      assert result.answer == "4"
+      assert Context.get_metric(result, :consensus) == 2 / 3
+      assert result.assigns[:answer] == "4"
     end
 
     test "uses weights from ensemble config for weighted strategy" do
@@ -379,41 +334,41 @@ defmodule CrucibleEnsemble.StageTest do
         }
       }
 
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: config
-          }
-        },
-        outputs: [
+      ctx =
+        build_context(config, [
           %{response: "A", model: :model1, confidence: 0.5},
           %{response: "B", model: :model2, confidence: 0.5},
           %{response: "B", model: :model3, confidence: 0.5}
-        ]
-      }
+        ])
 
-      {:ok, result} = Stage.run(context)
+      result = run_stage_ok(ctx, %{})
 
       # With weights, model1's response gets doubled weight
       # A: 0.5 (from confidence), B: 0.5 + 0.5 = 1.0
       # But note: the Stage doesn't currently apply the weights to responses
       # It passes them as options, so the behavior depends on Vote implementation
-      assert result.answer in ["a", "b"]
+      assert result.assigns[:answer] in ["a", "b"]
     end
   end
 
   describe "describe/1" do
     test "returns stage metadata" do
-      description = Stage.describe()
+      description = Stage.describe(%{})
 
       assert description.name == "ensemble_voting"
-      assert description.description == "Multi-model ensemble voting stage"
-      assert description.version == "0.3.0"
+      assert description.description =~ "ensemble"
+      assert description.version == "0.4.0"
       assert description.config_type == CrucibleIR.Reliability.Ensemble
     end
 
+    test "includes behaviour reference" do
+      description = Stage.describe(%{})
+
+      assert description.behaviour == Crucible.Stage
+    end
+
     test "lists available strategies" do
-      description = Stage.describe()
+      description = Stage.describe(%{})
 
       assert :majority in description.strategies
       assert :weighted in description.strategies
@@ -424,25 +379,12 @@ defmodule CrucibleEnsemble.StageTest do
     end
 
     test "lists execution modes" do
-      description = Stage.describe()
+      description = Stage.describe(%{})
 
       assert :parallel in description.execution_modes
       assert :sequential in description.execution_modes
       assert :hedged in description.execution_modes
       assert :cascade in description.execution_modes
-    end
-
-    test "lists inputs and outputs" do
-      description = Stage.describe()
-
-      assert :outputs in description.inputs
-      assert :query in description.inputs
-      assert {:experiment, :reliability, :ensemble} in description.inputs
-
-      assert :ensemble_result in description.outputs
-      assert :consensus in description.outputs
-      assert :answer in description.outputs
-      assert :ensemble_metadata in description.outputs
     end
 
     test "accepts options parameter" do
@@ -455,100 +397,90 @@ defmodule CrucibleEnsemble.StageTest do
 
   describe "run/2 with additional options" do
     test "merges config options with additional options" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :majority,
-              execution_mode: :parallel,
-              options: %{
-                "custom_key" => "custom_value"
-              }
-            }
-          }
-        },
-        outputs: [
-          %{response: "4", model: :model1},
-          %{response: "4", model: :model2}
-        ]
+      config = %EnsembleConfig{
+        strategy: :majority,
+        execution_mode: :parallel,
+        options: %{"custom_key" => "custom_value"}
       }
 
-      {:ok, result} = Stage.run(context, %{another_option: "value"})
+      ctx =
+        build_context(config, [
+          %{response: "4", model: :model1},
+          %{response: "4", model: :model2}
+        ])
 
-      assert result.answer == "4"
+      result = run_stage_ok(ctx, %{another_option: "value"})
+
+      assert result.assigns[:answer] == "4"
     end
 
     test "additional options take precedence over config options" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :majority,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{strategy: :majority, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
           %{response: "YES", model: :model1},
           %{response: "yes", model: :model2}
-        ]
-      }
+        ])
 
-      {:ok, result} = Stage.run(context, %{normalization: :lowercase_trim})
+      result = run_stage_ok(ctx, %{normalization: :lowercase_trim})
 
-      assert result.answer == "yes"
-      assert result.consensus == 1.0
+      assert result.assigns[:answer] == "yes"
+      assert Context.get_metric(result, :consensus) == 1.0
     end
   end
 
   describe "run/2 context preservation" do
     test "preserves existing context fields" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :majority,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{strategy: :majority, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
           %{response: "4", model: :model1},
           %{response: "4", model: :model2}
-        ],
-        custom_field: "preserved",
-        another_field: 123
-      }
+        ])
 
-      {:ok, result} = Stage.run(context)
+      # Add custom assigns and metrics
+      ctx = Context.assign(ctx, :custom_field, "preserved")
+      ctx = Context.put_metric(ctx, :custom_metric, 123)
 
-      assert result.custom_field == "preserved"
-      assert result.another_field == 123
-      assert result.answer == "4"
+      result = run_stage_ok(ctx, %{})
+
+      assert result.assigns[:custom_field] == "preserved"
+      assert Context.get_metric(result, :custom_metric) == 123
+      assert result.assigns[:answer] == "4"
     end
 
     test "adds ensemble-specific fields to context" do
-      context = %{
-        experiment: %{
-          reliability: %{
-            ensemble: %EnsembleConfig{
-              strategy: :majority,
-              execution_mode: :parallel
-            }
-          }
-        },
-        outputs: [
+      config = %EnsembleConfig{strategy: :majority, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
           %{response: "4", model: :model1},
           %{response: "4", model: :model2}
-        ]
-      }
+        ])
 
-      {:ok, result} = Stage.run(context)
+      result = run_stage_ok(ctx, %{})
 
-      assert Map.has_key?(result, :ensemble_result)
-      assert Map.has_key?(result, :consensus)
-      assert Map.has_key?(result, :answer)
-      assert Map.has_key?(result, :ensemble_metadata)
+      assert Context.has_artifact?(result, :ensemble_result)
+      assert Context.has_metric?(result, :consensus)
+      assert Context.has_metric?(result, :ensemble_latency_us)
+      assert Context.has_metric?(result, :ensemble_strategy)
+      assert Map.has_key?(result.assigns, :answer)
+      assert Map.has_key?(result.assigns, :ensemble_metadata)
+    end
+
+    test "marks stage as complete" do
+      config = %EnsembleConfig{strategy: :majority, execution_mode: :parallel}
+
+      ctx =
+        build_context(config, [
+          %{response: "4", model: :model1}
+        ])
+
+      result = run_stage_ok(ctx, %{})
+
+      assert Context.stage_completed?(result, :ensemble_voting)
     end
   end
 end
