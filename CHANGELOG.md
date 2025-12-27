@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2025-12-26
+
+### Changed
+- **Canonical describe/1 Schema** - Normalized `describe/1` to canonical schema format
+  - `name` changed from string (`"ensemble_voting"`) to atom (`:ensemble_voting`)
+  - Added `__schema_version__: "1.0.0"` marker for schema evolution
+  - Added `required`, `optional`, `types`, `defaults` core fields
+  - Extended metadata moved to `__extensions__.ensemble` namespace
+- **Crucible Framework Upgrade** - Updated dependency to `crucible_framework ~> 0.5.0`
+- **Version Bump** - Package version updated to 0.5.0
+
+### Added
+- **Conformance Tests** - New `test/crucible_ensemble/conformance_test.exs` for schema validation
+- **Stage Contract Documentation** - Added Stage Contract section to README
+
+### Documentation
+- Updated README Stage Introspection example to show canonical schema format
+- Added Stage Contract section with options documentation
+
 ## [0.3.0] - 2025-12-25
 
 ### Added

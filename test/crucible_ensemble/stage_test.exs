@@ -352,46 +352,58 @@ defmodule CrucibleEnsemble.StageTest do
   end
 
   describe "describe/1" do
-    test "returns stage metadata" do
-      description = Stage.describe(%{})
+    test "returns canonical schema format" do
+      schema = Stage.describe(%{})
 
-      assert description.name == "ensemble_voting"
-      assert description.description =~ "ensemble"
-      assert description.version == "0.4.0"
-      assert description.config_type == CrucibleIR.Reliability.Ensemble
+      # Core canonical fields
+      assert schema.name == :ensemble_voting
+      assert schema.description =~ "ensemble"
+      assert schema.version == "0.5.0"
+      assert schema.__schema_version__ == "1.0.0"
+
+      # Core schema structure
+      assert is_list(schema.required)
+      assert is_list(schema.optional)
+      assert is_map(schema.types)
+
+      # Extension contains config_type
+      assert schema.__extensions__.ensemble.config_type == CrucibleIR.Reliability.Ensemble
     end
 
-    test "includes behaviour reference" do
-      description = Stage.describe(%{})
+    test "includes behaviour reference in extensions" do
+      schema = Stage.describe(%{})
 
-      assert description.behaviour == Crucible.Stage
+      assert schema.__extensions__.ensemble.behaviour == Crucible.Stage
     end
 
-    test "lists available strategies" do
-      description = Stage.describe(%{})
+    test "lists available strategies in extensions" do
+      schema = Stage.describe(%{})
+      strategies = schema.__extensions__.ensemble.strategies
 
-      assert :majority in description.strategies
-      assert :weighted in description.strategies
-      assert :best_confidence in description.strategies
-      assert :unanimous in description.strategies
-      assert :semantic_similarity in description.strategies
-      assert :ranked_choice in description.strategies
+      assert :majority in strategies
+      assert :weighted in strategies
+      assert :best_confidence in strategies
+      assert :unanimous in strategies
+      assert :semantic_similarity in strategies
+      assert :ranked_choice in strategies
     end
 
-    test "lists execution modes" do
-      description = Stage.describe(%{})
+    test "lists execution modes in extensions" do
+      schema = Stage.describe(%{})
+      execution_modes = schema.__extensions__.ensemble.execution_modes
 
-      assert :parallel in description.execution_modes
-      assert :sequential in description.execution_modes
-      assert :hedged in description.execution_modes
-      assert :cascade in description.execution_modes
+      assert :parallel in execution_modes
+      assert :sequential in execution_modes
+      assert :hedged in execution_modes
+      assert :cascade in execution_modes
     end
 
     test "accepts options parameter" do
-      description = Stage.describe(%{custom_option: true})
+      schema = Stage.describe(%{custom_option: true})
 
-      # Should still return valid description
-      assert description.name == "ensemble_voting"
+      # Should still return valid canonical schema
+      assert schema.name == :ensemble_voting
+      assert is_atom(schema.name)
     end
   end
 

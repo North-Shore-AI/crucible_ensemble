@@ -87,36 +87,53 @@ defmodule CrucibleEnsemble.Stage do
   @spec describe(map()) :: map()
   def describe(_opts \\ %{}) do
     %{
-      name: "ensemble_voting",
+      __schema_version__: "1.0.0",
+      name: :ensemble_voting,
       description: "Multi-model ensemble voting stage using CrucibleEnsemble",
-      version: "0.4.0",
-      behaviour: Crucible.Stage,
-      inputs: [
-        {:context, :outputs, "List of model response maps"},
-        {:experiment, :reliability, :ensemble, "EnsembleConfig struct"}
-      ],
-      outputs: [
-        {:artifact, :ensemble_result, "Full voting result map"},
-        {:metric, :consensus, "Consensus score 0.0-1.0"},
-        {:metric, :ensemble_latency_us, "Voting latency"},
-        {:metric, :ensemble_strategy, "Strategy used"},
-        {:assign, :answer, "Final answer"}
-      ],
-      config_type: CrucibleIR.Reliability.Ensemble,
-      strategies: [
-        :majority,
-        :weighted,
-        :best_confidence,
-        :unanimous,
-        :semantic_similarity,
-        :ranked_choice
-      ],
-      execution_modes: [
-        :parallel,
-        :sequential,
-        :hedged,
-        :cascade
-      ]
+      required: [],
+      optional: [:normalization, :timeout_ms, :min_responses],
+      types: %{
+        normalization: {:enum, [:none, :lowercase, :trim, :lowercase_trim]},
+        timeout_ms: :integer,
+        min_responses: :integer
+      },
+      defaults: %{
+        normalization: :none,
+        timeout_ms: 30_000,
+        min_responses: 1
+      },
+      version: "0.5.0",
+      __extensions__: %{
+        ensemble: %{
+          behaviour: Crucible.Stage,
+          config_type: CrucibleIR.Reliability.Ensemble,
+          strategies: [
+            :majority,
+            :weighted,
+            :best_confidence,
+            :unanimous,
+            :semantic_similarity,
+            :ranked_choice
+          ],
+          execution_modes: [
+            :parallel,
+            :sequential,
+            :hedged,
+            :cascade
+          ],
+          inputs: [
+            {:context, :outputs, "List of model response maps"},
+            {:experiment, :reliability, :ensemble, "EnsembleConfig struct"}
+          ],
+          outputs: [
+            {:artifact, :ensemble_result, "Full voting result map"},
+            {:metric, :consensus, "Consensus score 0.0-1.0"},
+            {:metric, :ensemble_latency_us, "Voting latency"},
+            {:metric, :ensemble_strategy, "Strategy used"},
+            {:assign, :answer, "Final answer"}
+          ]
+        }
+      }
     }
   end
 

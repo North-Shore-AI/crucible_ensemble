@@ -445,50 +445,79 @@ defmodule CrucibleEnsemble.StageBehaviourTest do
   end
 
   describe "describe/1" do
-    test "returns stage metadata" do
-      desc = CrucibleEnsemble.Stage.describe(%{})
+    test "returns canonical schema format" do
+      schema = CrucibleEnsemble.Stage.describe(%{})
 
-      assert desc.name == "ensemble_voting"
-      assert is_binary(desc.description)
-      assert desc.description =~ "ensemble"
+      # Core fields
+      assert schema.name == :ensemble_voting
+      assert is_binary(schema.description)
+      assert is_list(schema.required)
+      assert is_list(schema.optional)
+      assert is_map(schema.types)
+
+      # Optional fields moved to extensions
+      assert Map.has_key?(schema, :__extensions__)
+      assert Map.has_key?(schema.__extensions__, :ensemble)
+
+      assert schema.__extensions__.ensemble.strategies == [
+               :majority,
+               :weighted,
+               :best_confidence,
+               :unanimous,
+               :semantic_similarity,
+               :ranked_choice
+             ]
     end
 
-    test "includes behaviour reference" do
-      desc = CrucibleEnsemble.Stage.describe(%{})
-
-      assert desc.behaviour == Crucible.Stage
+    test "name is an atom" do
+      schema = CrucibleEnsemble.Stage.describe(%{})
+      assert is_atom(schema.name)
     end
 
-    test "lists available strategies" do
-      desc = CrucibleEnsemble.Stage.describe(%{})
+    test "includes behaviour reference in extensions" do
+      schema = CrucibleEnsemble.Stage.describe(%{})
 
-      assert :majority in desc.strategies
-      assert :weighted in desc.strategies
-      assert :best_confidence in desc.strategies
-      assert :unanimous in desc.strategies
-      assert :semantic_similarity in desc.strategies
-      assert :ranked_choice in desc.strategies
+      assert schema.__extensions__.ensemble.behaviour == Crucible.Stage
     end
 
-    test "lists execution modes" do
-      desc = CrucibleEnsemble.Stage.describe(%{})
+    test "lists available strategies in extensions" do
+      schema = CrucibleEnsemble.Stage.describe(%{})
+      strategies = schema.__extensions__.ensemble.strategies
 
-      assert :parallel in desc.execution_modes
-      assert :sequential in desc.execution_modes
-      assert :hedged in desc.execution_modes
-      assert :cascade in desc.execution_modes
+      assert :majority in strategies
+      assert :weighted in strategies
+      assert :best_confidence in strategies
+      assert :unanimous in strategies
+      assert :semantic_similarity in strategies
+      assert :ranked_choice in strategies
     end
 
-    test "specifies config_type" do
-      desc = CrucibleEnsemble.Stage.describe(%{})
+    test "lists execution modes in extensions" do
+      schema = CrucibleEnsemble.Stage.describe(%{})
+      execution_modes = schema.__extensions__.ensemble.execution_modes
 
-      assert desc.config_type == CrucibleIR.Reliability.Ensemble
+      assert :parallel in execution_modes
+      assert :sequential in execution_modes
+      assert :hedged in execution_modes
+      assert :cascade in execution_modes
+    end
+
+    test "specifies config_type in extensions" do
+      schema = CrucibleEnsemble.Stage.describe(%{})
+
+      assert schema.__extensions__.ensemble.config_type == CrucibleIR.Reliability.Ensemble
     end
 
     test "includes version" do
-      desc = CrucibleEnsemble.Stage.describe(%{})
+      schema = CrucibleEnsemble.Stage.describe(%{})
 
-      assert is_binary(desc.version)
+      assert is_binary(schema.version)
+    end
+
+    test "has schema version marker" do
+      schema = CrucibleEnsemble.Stage.describe(%{})
+
+      assert schema.__schema_version__ == "1.0.0"
     end
   end
 

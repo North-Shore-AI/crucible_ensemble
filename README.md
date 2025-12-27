@@ -4,7 +4,6 @@
 
 # CrucibleEnsemble
 
-[![CI](https://github.com/North-Shore-AI/crucible_ensemble/actions/workflows/elixir.yaml/badge.svg)](https://github.com/North-Shore-AI/crucible_ensemble/actions/workflows/elixir.yaml)
 [![Elixir](https://img.shields.io/badge/elixir-1.14+-purple.svg)](https://elixir-lang.org)
 [![Hex.pm](https://img.shields.io/hexpm/v/crucible_ensemble.svg)](https://hex.pm/packages/crucible_ensemble)
 [![Documentation](https://img.shields.io/badge/docs-hexdocs-purple.svg)](https://hexdocs.pm/crucible_ensemble)
@@ -40,16 +39,7 @@ Add `ensemble` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:crucible_ensemble, "~> 0.3.0"}
-  ]
-end
-```
-
-Or install from GitHub:
-
-```elixir
-def deps do
-  [
+    {:crucible_ensemble, "~> 0.4.0"}
   ]
 end
 ```
@@ -125,22 +115,34 @@ IO.puts(updated_context.consensus)
 ### Stage Introspection
 
 ```elixir
-# Get stage metadata
-description = CrucibleEnsemble.Stage.describe()
+# Get stage metadata (canonical schema format)
+schema = CrucibleEnsemble.Stage.describe()
 
-IO.inspect(description)
+IO.inspect(schema)
 # => %{
-#   name: "ensemble_voting",
-#   description: "Multi-model ensemble voting stage",
-#   version: "0.3.0",
-#   inputs: [:outputs, :query, {:experiment, :reliability, :ensemble}],
-#   outputs: [:ensemble_result, :consensus, :answer, :ensemble_metadata],
-#   config_type: CrucibleIR.Reliability.Ensemble,
-#   strategies: [:majority, :weighted, :best_confidence, :unanimous,
-#                :semantic_similarity, :ranked_choice],
-#   execution_modes: [:parallel, :sequential, :hedged, :cascade]
+#   __schema_version__: "1.0.0",
+#   name: :ensemble_voting,
+#   description: "Multi-model ensemble voting stage using CrucibleEnsemble",
+#   required: [],
+#   optional: [:normalization, :timeout_ms, :min_responses],
+#   types: %{normalization: {:enum, [...]}, timeout_ms: :integer, ...},
+#   defaults: %{normalization: :none, timeout_ms: 30000, min_responses: 1},
+#   version: "0.5.0",
+#   __extensions__: %{ensemble: %{strategies: [...], execution_modes: [...]}}
 # }
 ```
+
+## Stage Contract
+
+`CrucibleEnsemble.Stage` implements the `Crucible.Stage` behaviour with full describe/1 schema.
+
+### Options
+
+- `:normalization` - Response normalization (`:none`, `:lowercase`, `:trim`, `:lowercase_trim`)
+- `:timeout_ms` - Voting timeout in milliseconds (default: 30000)
+- `:min_responses` - Minimum responses required (default: 1)
+
+See `mix crucible.stages --name ensemble_voting` for full details.
 
 ## Configuration
 
