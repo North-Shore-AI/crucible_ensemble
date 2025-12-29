@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2025-12-28
+
+### Changed
+- **Dependency Updates**
+  - Updated `crucible_framework` from `~> 0.5.0` to `~> 0.5.2`
+  - Updated `telemetry` from `~> 1.2` to `~> 1.3`
+
 ## [0.4.0] - 2025-12-26
 
 ### Changed

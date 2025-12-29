@@ -39,7 +39,7 @@ Add `ensemble` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:crucible_ensemble, "~> 0.4.0"}
+    {:crucible_ensemble, "~> 0.4.1"}
   ]
 end
 ```
