@@ -38,7 +38,7 @@ defmodule CrucibleEnsemble.MixProject do
       {:telemetry, "~> 1.3"},
 
       # Development and testing
-      {:ex_doc, "~> 0.31", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.40.0", only: :dev, runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:mox, "~> 1.1", only: :test}
@@ -53,7 +53,7 @@ defmodule CrucibleEnsemble.MixProject do
     [
       name: "crucible_ensemble",
       description: description(),
-      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE),
+      files: ~w(lib assets mix.exs README.md CHANGELOG.md LICENSE),
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,
